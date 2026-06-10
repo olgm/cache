@@ -69,7 +69,7 @@ function hasIntel(roomName) {
     if (Game.rooms[roomName])
         return true;
     const mem = Memory.expansion;
-    if (mem.scoutedRooms && mem.scoutedRooms[roomName]) {
+    if ((mem === null || mem === void 0 ? void 0 : mem.scoutedRooms) && mem.scoutedRooms[roomName]) {
         return Game.time - mem.scoutedRooms[roomName] < 1500;
     }
     return false;

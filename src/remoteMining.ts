@@ -78,7 +78,7 @@ function adjacentRooms(roomName: string): string[] {
 function hasIntel(roomName: string): boolean {
   if (Game.rooms[roomName]) return true;
   const mem = Memory.expansion;
-  if (mem.scoutedRooms && mem.scoutedRooms[roomName]) {
+  if (mem?.scoutedRooms && mem.scoutedRooms[roomName]) {
     return Game.time - mem.scoutedRooms[roomName] < 1500;
   }
   return false;

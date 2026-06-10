@@ -1,10 +1,11 @@
 /**
- * Cache v0.0.1 — Main loop.
+ * Cache v0.0.4 — Main loop.
  *
  * Called every tick by the Screeps runtime. Orchestrates:
  *   1. Cache flush
- *   2. Spawn management
- *   3. Creep role dispatch
+ *   2. Expansion & remote-mining maintenance
+ *   3. Spawn management (includes expansion/remote requests)
+ *   4. Creep role dispatch
  *
  * Catches all errors to prevent a single failure from crashing the tick.
  */

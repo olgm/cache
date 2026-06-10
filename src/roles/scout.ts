@@ -56,7 +56,7 @@ export function runScout(creep: Creep): void {
 /** Find an adjacent room we haven't scouted yet from the creep's current room. */
 function findUnexploredAdjacent(creep: Creep): string | null {
   const mem = Memory.expansion;
-  const scouted = mem.scoutedRooms ?? {};
+  const scouted = mem?.scoutedRooms ?? {};
 
   const exits = Game.map.describeExits(creep.room.name);
   if (!exits) return null;

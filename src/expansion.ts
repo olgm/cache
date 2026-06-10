@@ -73,7 +73,7 @@ function adjacentRooms(roomName: string): string[] {
 /** Check whether we have intel on a room (it's visible or recently scouted). */
 function hasIntel(roomName: string): boolean {
   if (Game.rooms[roomName]) return true;
-  const mem = Memory.expansion;
+  const mem = ensureMem();
   if (mem.scoutedRooms && mem.scoutedRooms[roomName]) {
     // Scouted within the last 1500 ticks (~25 min) is still fresh.
     return Game.time - mem.scoutedRooms[roomName] < 1500;
@@ -354,10 +354,9 @@ export function recordScoutIntel(roomName: string): void {
  * Called from the main loop.
  */
 export function runExpansionManager(): void {
-  ensureMem();
+  const mem = ensureMem();
 
   // Transition claimed rooms to bootstrapping
-  const mem = Memory.expansion;
   if (mem.state === "claiming" && mem.targetRoom) {
     const room = Game.rooms[mem.targetRoom];
     if (room && room.controller && room.controller.my) {
