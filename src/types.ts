@@ -76,6 +76,10 @@ export interface RemoteOp {
   homeRoom: string;
   sources: RemoteSourceInfo[];
   lastEval: number;
+  /** Cumulative energy hauled from this remote op (reset on deactivation). */
+  totalHauled: number;
+  /** Tick when energy was last hauled from this op. */
+  lastHaulTick: number;
 }
 
 export interface RemoteMiningMemory {
