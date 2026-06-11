@@ -11,10 +11,13 @@
  *
  * State persisted in Memory.remoteMining.
  *
+ * v0.1.2 — GCL gate lowered + energy-aware bodies + harvest tracking.
+ *
  * Design constraints:
  *   - Only adjacent rooms (range 1) for now — keeps pathing cheap.
- *   - Limit to 1 remote op at very low GCL; scale with RCL.
- *   - Use expansion intel (scoutedRooms) to avoid blind evaluation.
+ *   - Allow 1 remote op at GCL 1 (bootstrap the energy economy).
+ *   - Scale body plans to room energy capacity.
+ *   - Track energy harvested per remote op for effectiveness metrics.
  *   - Re-evaluate each active remote every 300 ticks to catch changes
  *     (hostile incursion, source drained, etc.).
  */
@@ -29,17 +32,19 @@ const types_1 = require("./types");
 // ---------------------------------------------------------------------------
 /** Re-evaluate an active remote op every N ticks. */
 const REEVAL_INTERVAL = 300;
-/** Max remote ops we maintain. Scales with GCL: min 0, max 2. */
+/** Max remote ops we maintain. Scales with GCL. */
 function maxRemoteOps() {
-    // GCL 1 → 0 (we have enough with 1 room)
-    // GCL 2 → 1 (can afford to stretch)
-    // GCL 3+ → 2
+    // GCL 0–1 → 1 (bootstrap energy economy early)
+    // GCL 2   → 2
+    // GCL 3+  → 3
     const gcl = Game.gcl.level;
+    if (gcl < 1)
+        return 1; // even at GCL 0 (pre-tick 1) allow
     if (gcl < 2)
-        return 0;
-    if (gcl < 3)
         return 1;
-    return 2;
+    if (gcl < 3)
+        return 2;
+    return 3;
 }
 /** Max number of remote harvesters per source. */
 const MAX_HARVESTERS_PER_SOURCE = 1;
@@ -49,6 +54,40 @@ const MAX_HAULERS_PER_SOURCE = 1;
  *  estimated travel distance from home room is <= this many rooms away.
  *  We limit to range 1 (adjacent only) for now. */
 const MAX_ROOM_RANGE = 1;
+// ---------------------------------------------------------------------------
+// Energy-aware body selection
+// ---------------------------------------------------------------------------
+/**
+ * Body tiers for remote harvesters, keyed by energy capacity floor.
+ * Picked so the body cost fits in the room's energy capacity.
+ * Tiers (cost → body):
+ *   200+ → [WORK, MOVE]               (cheap, 150e)
+ *   300+ → [WORK, WORK, MOVE]          (250e)
+ *   450+ → [WORK, WORK, MOVE, MOVE]    (300e)
+ *
+ * At very low levels we use 1 WORK — still better than nothing.
+ */
+function selectRemoteHarvesterBody(energyCapacity) {
+    if (energyCapacity >= 450)
+        return [WORK, WORK, MOVE, MOVE];
+    if (energyCapacity >= 300)
+        return [WORK, WORK, MOVE];
+    return [WORK, MOVE]; // floor: 200e capacity (RCL 1 spawns are 300 so this is safe)
+}
+/**
+ * Body tiers for remote haulers, keyed by energy capacity floor.
+ * Tiers (cost → body):
+ *   200+ → [CARRY, MOVE]               (100e)
+ *   300+ → [CARRY, CARRY, MOVE, MOVE]  (200e)
+ *   450+ → [CARRY, CARRY, CARRY, MOVE, MOVE, MOVE] (300e)
+ */
+function selectRemoteHaulerBody(energyCapacity) {
+    if (energyCapacity >= 450)
+        return [CARRY, CARRY, CARRY, MOVE, MOVE, MOVE];
+    if (energyCapacity >= 300)
+        return [CARRY, CARRY, MOVE, MOVE];
+    return [CARRY, MOVE];
+}
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -110,6 +149,21 @@ function countHaulersForRoom(roomName) {
         }
     }
     return count;
+}
+/**
+ * Get the effective energy capacity for spawning across all owned spawns.
+ * Used to select appropriately sized remote bodies.
+ */
+function effectiveEnergyCapacity() {
+    let maxCap = 0;
+    for (const name in Game.spawns) {
+        const cap = Game.spawns[name].room.energyCapacityAvailable;
+        if (cap > maxCap)
+            maxCap = cap;
+    }
+    if (maxCap === 0)
+        maxCap = 300; // fallback for edge cases
+    return maxCap;
 }
 // ---------------------------------------------------------------------------
 // Room evaluation
@@ -269,6 +323,8 @@ function runRemoteMiningManager() {
                     homeRoom: best.homeRoom,
                     sources: [best.source],
                     lastEval: Game.time,
+                    totalHauled: 0,
+                    lastHaulTick: 0,
                 };
                 mem.ops[best.source.roomName] = op;
                 console.log(`RemoteMining: establishing op on ${best.source.roomName} ` +
@@ -282,6 +338,7 @@ function runRemoteMiningManager() {
  * Called by the spawn manager when normal targets are met.
  *
  * Checks each active remote op for missing harvesters/haulers.
+ * Uses energy-aware body selection based on room capacity.
  */
 function getRemoteMiningSpawnRequest() {
     const mem = ensureMem();
@@ -293,9 +350,10 @@ function getRemoteMiningSpawnRequest() {
             // Check for missing harvesters
             const hCount = countHarvestersForSource(src.id);
             if (hCount < src.assignedHarvesters) {
+                const cap = effectiveEnergyCapacity();
                 return {
                     role: "remoteHarvester",
-                    body: [WORK, WORK, MOVE],
+                    body: selectRemoteHarvesterBody(cap),
                     priority: 3,
                     targetId: src.id,
                 };
@@ -303,9 +361,10 @@ function getRemoteMiningSpawnRequest() {
             // Check for missing haulers
             const haulCount = countHaulersForRoom(op.roomName);
             if (haulCount < src.assignedHaulers) {
+                const cap = effectiveEnergyCapacity();
                 return {
                     role: "remoteHauler",
-                    body: [CARRY, CARRY, MOVE, MOVE],
+                    body: selectRemoteHaulerBody(cap),
                     priority: 4,
                     targetId: op.roomName,
                     homeRoom: op.homeRoom,

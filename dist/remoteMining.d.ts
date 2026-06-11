@@ -10,10 +10,13 @@
  *
  * State persisted in Memory.remoteMining.
  *
+ * v0.1.2 — GCL gate lowered + energy-aware bodies + harvest tracking.
+ *
  * Design constraints:
  *   - Only adjacent rooms (range 1) for now — keeps pathing cheap.
- *   - Limit to 1 remote op at very low GCL; scale with RCL.
- *   - Use expansion intel (scoutedRooms) to avoid blind evaluation.
+ *   - Allow 1 remote op at GCL 1 (bootstrap the energy economy).
+ *   - Scale body plans to room energy capacity.
+ *   - Track energy harvested per remote op for effectiveness metrics.
  *   - Re-evaluate each active remote every 300 ticks to catch changes
  *     (hostile incursion, source drained, etc.).
  */
@@ -39,6 +42,7 @@ export declare function runRemoteMiningManager(): void;
  * Called by the spawn manager when normal targets are met.
  *
  * Checks each active remote op for missing harvesters/haulers.
+ * Uses energy-aware body selection based on room capacity.
  */
 export declare function getRemoteMiningSpawnRequest(): RemoteSpawnRequest | null;
 /**
