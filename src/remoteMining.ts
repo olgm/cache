@@ -430,6 +430,7 @@ export function getRemoteMiningSpawnRequest(): RemoteSpawnRequest | null {
           body: selectRemoteHarvesterBody(cap),
           priority: 3,
           targetId: src.id,
+          homeRoom: op.homeRoom,
         };
       }
 
@@ -466,6 +467,7 @@ export function onRemoteMiningSpawn(
 
   if (role === "remoteHarvester" && targetId) {
     creep.memory.sourceId = targetId as Id<Source>;
+    creep.memory.homeRoom = homeRoom;
     // Also store the room name so the harvester knows where to go
     const src = Game.getObjectById(targetId as Id<Source>);
     if (src) {

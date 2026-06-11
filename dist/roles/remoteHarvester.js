@@ -46,11 +46,15 @@ function runRemoteHarvester(creep) {
         return;
     }
     const source = Game.getObjectById(creep.memory.sourceId);
-    // If source is gone or depleted, return home and suicide
-    if (!source || source.energy === 0) {
+    // If source is gone (destroyed or room changed), return home.
+    // Do NOT return home just because energy is 0 — sources regenerate.
+    if (!source) {
         returnHome(creep);
         return;
     }
+    // Source is regenerating: wait (no action needed, save CPU)
+    if (source.energy === 0)
+        return;
     // If we're not in the source room, move there
     if (creep.room.name !== source.room.name) {
         moveCached(creep, source.pos, `toSrc_${source.id}`);

@@ -374,6 +374,7 @@ function getRemoteMiningSpawnRequest() {
                     body: selectRemoteHarvesterBody(cap),
                     priority: 3,
                     targetId: src.id,
+                    homeRoom: op.homeRoom,
                 };
             }
             // Check for missing haulers
@@ -402,6 +403,7 @@ function onRemoteMiningSpawn(role, creepName, targetId, homeRoom) {
         return;
     if (role === "remoteHarvester" && targetId) {
         creep.memory.sourceId = targetId;
+        creep.memory.homeRoom = homeRoom;
         // Also store the room name so the harvester knows where to go
         const src = Game.getObjectById(targetId);
         if (src) {
