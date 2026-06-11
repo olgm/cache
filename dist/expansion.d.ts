@@ -1,5 +1,5 @@
 /**
- * Cache v0.0.4 — Expansion manager.
+ * Cache v0.0.5 — Expansion manager.
  *
  * Drives multi-room expansion:
  *   1. Scout adjacent rooms (even while GCL-locked) to gather intel.
@@ -9,9 +9,9 @@
  *
  * State machine persisted in Memory.expansion.
  *
- * v0.0.4 CPU optimisations:
+ * v0.0.5 CPU optimisations:
  *   - ownedRoomCount cached per tick (called multiple times).
- *   - hasActiveClaimer / hasActiveScout cached per tick.
+ *   - hasActiveClaimer / hasActiveScout via creep census (no extra iteration).
  *   - Expensive room scoring throttled to every 20 ticks.
  *   - pickTarget uses cached room structures instead of repeated find().
  */

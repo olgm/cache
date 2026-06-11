@@ -1,11 +1,10 @@
 /**
- * Cache v0.0.4 — Spawn manager.
+ * Cache v0.0.5 — Spawn manager.
  * Counts creeps per role against TARGET_COUNTS and spawns the highest-priority
  * missing creep when energy is available.
  *
- * v0.0.4: Integrated expansion and remote-mining spawn requests.
- * After base roles are satisfied, checks for claimers, scouts,
- * remote harvesters, and remote haulers.
+ * v0.0.5: Uses creep census (single Game.creeps pass) instead of
+ * per-role countRole() loops. Eliminates 3 redundant iterations.
  */
 
 import {
@@ -22,6 +21,7 @@ import {
   getRemoteMiningSpawnRequest,
   onRemoteMiningSpawn,
 } from "./remoteMining";
+import { getCensus } from "./utils/creepCensus";
 
 /** Compute the total energy cost of a body plan. */
 function bodyCost(body: BodyPartConstant[]): number {
@@ -32,27 +32,18 @@ function bodyCost(body: BodyPartConstant[]): number {
   return total;
 }
 
-/** Count living creeps assigned to a given role. */
-function countRole(role: CreepRole): number {
-  let n = 0;
-  for (const name in Game.creeps) {
-    if (Game.creeps[name].memory.role === role) {
-      n++;
-    }
-  }
-  return n;
-}
-
 /**
  * Choose the next creep role to spawn.
  * Returns null when all target counts are met.
+ * Uses the pre-built creep census (no Game.creeps iteration).
  */
 function pickRole(): CreepRole | null {
+  const census = getCensus();
   let bestRole: CreepRole | null = null;
   let bestPriority = Infinity;
 
   for (const role of ["harvester", "builder", "upgrader"] as CreepRole[]) {
-    const current = countRole(role);
+    const current = census.roleCounts[role] ?? 0;
     if (current >= TARGET_COUNTS[role]) continue;
 
     const priority = ROLE_PRIORITY[role];

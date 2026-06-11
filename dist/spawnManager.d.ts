@@ -1,11 +1,10 @@
 /**
- * Cache v0.0.4 — Spawn manager.
+ * Cache v0.0.5 — Spawn manager.
  * Counts creeps per role against TARGET_COUNTS and spawns the highest-priority
  * missing creep when energy is available.
  *
- * v0.0.4: Integrated expansion and remote-mining spawn requests.
- * After base roles are satisfied, checks for claimers, scouts,
- * remote harvesters, and remote haulers.
+ * v0.0.5: Uses creep census (single Game.creeps pass) instead of
+ * per-role countRole() loops. Eliminates 3 redundant iterations.
  */
 /**
  * Main entry: run spawn logic for every owned spawn.

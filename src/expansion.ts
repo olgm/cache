@@ -1,5 +1,5 @@
 /**
- * Cache v0.0.4 — Expansion manager.
+ * Cache v0.0.5 — Expansion manager.
  *
  * Drives multi-room expansion:
  *   1. Scout adjacent rooms (even while GCL-locked) to gather intel.
@@ -9,9 +9,9 @@
  *
  * State machine persisted in Memory.expansion.
  *
- * v0.0.4 CPU optimisations:
+ * v0.0.5 CPU optimisations:
  *   - ownedRoomCount cached per tick (called multiple times).
- *   - hasActiveClaimer / hasActiveScout cached per tick.
+ *   - hasActiveClaimer / hasActiveScout via creep census (no extra iteration).
  *   - Expensive room scoring throttled to every 20 ticks.
  *   - pickTarget uses cached room structures instead of repeated find().
  */
@@ -22,6 +22,7 @@ import {
   defaultExpansionMemory,
   CreepRole,
 } from "./types";
+import { getCensus } from "./utils/creepCensus";
 
 // ---------------------------------------------------------------------------
 // Per-tick caches (cleared implicitly when tick changes via Game.time)
@@ -29,10 +30,6 @@ import {
 
 let _ownedRoomCountCache = -1;
 let _ownedRoomCountTick = -1;
-let _claimerActiveCache = false;
-let _claimerActiveTick = -1;
-let _scoutActiveCache = false;
-let _scoutActiveTick = -1;
 
 /** How often (ticks) the expansion spawn-request logic does a full evaluation. */
 const EVAL_THROTTLE = 20;
@@ -147,35 +144,14 @@ function ensureMem(): ExpansionMemory {
   return Memory.expansion;
 }
 
-/** Check if we have an active (unclaimed) claimer creep. Cached per tick. */
+/** Check if we have an active (unclaimed) claimer creep (via census). */
 function hasActiveClaimer(): boolean {
-  if (_claimerActiveTick === Game.time) return _claimerActiveCache;
-  for (const name in Game.creeps) {
-    const c = Game.creeps[name];
-    if (c.memory.role === "claimer" && !c.memory.claimed) {
-      _claimerActiveCache = true;
-      _claimerActiveTick = Game.time;
-      return true;
-    }
-  }
-  _claimerActiveCache = false;
-  _claimerActiveTick = Game.time;
-  return false;
+  return getCensus().hasActiveClaimer;
 }
 
-/** Check if we have an active scout creep. Cached per tick. */
+/** Check if we have an active scout creep (via census). */
 function hasActiveScout(): boolean {
-  if (_scoutActiveTick === Game.time) return _scoutActiveCache;
-  for (const name in Game.creeps) {
-    if (Game.creeps[name].memory.role === "scout") {
-      _scoutActiveCache = true;
-      _scoutActiveTick = Game.time;
-      return true;
-    }
-  }
-  _scoutActiveCache = false;
-  _scoutActiveTick = Game.time;
-  return false;
+  return getCensus().hasActiveScout;
 }
 
 // ---------------------------------------------------------------------------
