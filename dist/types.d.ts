@@ -26,12 +26,20 @@ declare global {
     }
 }
 export type ExpansionState = "idle" | "scouting" | "claiming" | "bootstrapping";
+/** Per-source info recorded during scouting for remote-mining use. */
+export interface ScoutedSourceInfo {
+    id: string;
+    x: number;
+    y: number;
+}
 export interface ExpansionMemory {
     state: ExpansionState;
     targetRoom?: string;
     scoutDispatched: boolean;
     claimerSpawned: boolean;
     scoutedRooms: Record<string, number>;
+    /** Source positions recorded during scouting (for remote-mining). */
+    scoutedSources: Record<string, ScoutedSourceInfo[]>;
 }
 export declare function defaultExpansionMemory(): ExpansionMemory;
 export type RemoteMiningState = "idle" | "active";

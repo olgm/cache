@@ -20,6 +20,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getExpansionSpawnRequest = getExpansionSpawnRequest;
 exports.onExpansionSpawn = onExpansionSpawn;
 exports.recordScoutIntel = recordScoutIntel;
+exports.recordScoutSources = recordScoutSources;
 exports.runExpansionManager = runExpansionManager;
 const types_1 = require("./types");
 const creepCensus_1 = require("./utils/creepCensus");
@@ -276,6 +277,17 @@ function recordScoutIntel(roomName) {
     if (!mem.scoutedRooms)
         mem.scoutedRooms = {};
     mem.scoutedRooms[roomName] = Game.time;
+}
+/**
+ * Record source positions during scouting so remote-mining can establish
+ * ops based on intel even after the scout leaves (no current vision).
+ * Called by the scout role when it enters a visible room.
+ */
+function recordScoutSources(roomName, sources) {
+    const mem = ensureMem();
+    if (!mem.scoutedSources)
+        mem.scoutedSources = {};
+    mem.scoutedSources[roomName] = sources;
 }
 /**
  * Run expansion-related maintenance each tick.

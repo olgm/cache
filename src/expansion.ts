@@ -326,6 +326,17 @@ export function recordScoutIntel(roomName: string): void {
 }
 
 /**
+ * Record source positions during scouting so remote-mining can establish
+ * ops based on intel even after the scout leaves (no current vision).
+ * Called by the scout role when it enters a visible room.
+ */
+export function recordScoutSources(roomName: string, sources: { id: string; x: number; y: number }[]): void {
+  const mem = ensureMem();
+  if (!mem.scoutedSources) mem.scoutedSources = {};
+  mem.scoutedSources[roomName] = sources;
+}
+
+/**
  * Run expansion-related maintenance each tick.
  * Called from the main loop.
  */

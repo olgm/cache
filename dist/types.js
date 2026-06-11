@@ -12,6 +12,7 @@ function defaultExpansionMemory() {
         scoutDispatched: false,
         claimerSpawned: false,
         scoutedRooms: {},
+        scoutedSources: {},
     };
 }
 function defaultRemoteMiningMemory() {
