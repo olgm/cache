@@ -68,18 +68,20 @@ const MAX_ROOM_RANGE = 1;
 
 /**
  * Body tiers for remote harvesters, keyed by energy capacity floor.
- * Picked so the body cost fits in the room's energy capacity.
- * Tiers (cost → body):
- *   200+ → [WORK, MOVE]               (cheap, 150e)
- *   300+ → [WORK, WORK, MOVE]          (250e)
- *   450+ → [WORK, WORK, MOVE, MOVE]    (300e)
+ * Every tier includes at least 1 CARRY so the harvester can hold energy
+ * before dropping it for the hauler to pick up.
  *
- * At very low levels we use 1 WORK — still better than nothing.
+ * Costs (WORK=100, CARRY=50, MOVE=50):
+ *   200+ → [WORK, CARRY, MOVE]              (200e, 2e/tick mine, 50 cap)
+ *   300+ → [WORK, WORK, CARRY, MOVE]         (300e, 4e/tick mine, 50 cap)
+ *   450+ → [WORK, WORK, WORK, CARRY, MOVE, MOVE]  (450e, 6e/tick mine, 50 cap)
+ *   550+ → [WORK, WORK, WORK, CARRY, CARRY, MOVE, MOVE, MOVE] (550e, 6e/tick, 100 cap)
  */
 function selectRemoteHarvesterBody(energyCapacity: number): BodyPartConstant[] {
-  if (energyCapacity >= 450) return [WORK, WORK, MOVE, MOVE];
-  if (energyCapacity >= 300) return [WORK, WORK, MOVE];
-  return [WORK, MOVE]; // floor: 200e capacity (RCL 1 spawns are 300 so this is safe)
+  if (energyCapacity >= 550) return [WORK, WORK, WORK, CARRY, CARRY, MOVE, MOVE, MOVE];
+  if (energyCapacity >= 450) return [WORK, WORK, WORK, CARRY, MOVE, MOVE];
+  if (energyCapacity >= 300) return [WORK, WORK, CARRY, MOVE];
+  return [WORK, CARRY, MOVE]; // floor: 200e (works even with 300-cap spawns)
 }
 
 /**

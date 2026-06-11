@@ -121,7 +121,7 @@ export function runRemoteHauler(creep: Creep): void {
 
     // Use findClosestByRange for dropped energy (much cheaper than findClosestByPath)
     const dropped = creep.pos.findClosestByRange(FIND_DROPPED_RESOURCES, {
-      filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount > 50,
+      filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount > 0,
     });
 
     if (dropped) {

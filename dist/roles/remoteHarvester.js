@@ -60,7 +60,11 @@ function runRemoteHarvester(creep) {
         moveCached(creep, source.pos, `toSrc_${source.id}`);
         return;
     }
-    // In the source room: harvest
+    // In the source room: harvest, dropping when full so haulers can collect
+    if (creep.store.getFreeCapacity() === 0) {
+        creep.drop(RESOURCE_ENERGY);
+        return;
+    }
     const result = creep.harvest(source);
     if (result === ERR_NOT_IN_RANGE) {
         moveCached(creep, source.pos, `nearSrc_${source.id}`);
