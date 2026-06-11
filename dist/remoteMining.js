@@ -27,6 +27,7 @@ exports.getRemoteMiningSpawnRequest = getRemoteMiningSpawnRequest;
 exports.onRemoteMiningSpawn = onRemoteMiningSpawn;
 exports.activeRemoteOpCount = activeRemoteOpCount;
 const types_1 = require("./types");
+const creepCensus_1 = require("./utils/creepCensus");
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -124,31 +125,19 @@ function countRole(role) {
 }
 /**
  * Count living remote harvesters assigned to a specific source id.
- * Remote harvesters store the source id in creep.memory.sourceId.
+ * Uses the pre-built creep census (single Game.creeps pass).
  */
 function countHarvestersForSource(sourceId) {
-    let count = 0;
-    for (const name in Game.creeps) {
-        const c = Game.creeps[name];
-        if (c.memory.role === "remoteHarvester" && c.memory.sourceId === sourceId) {
-            count++;
-        }
-    }
-    return count;
+    var _a;
+    return (_a = (0, creepCensus_1.getCensus)().harvestersBySource[sourceId]) !== null && _a !== void 0 ? _a : 0;
 }
 /**
  * Count living remote haulers assigned to a specific remote room.
- * Remote haulers store the target room in creep.memory.targetRoom.
+ * Uses the pre-built creep census (single Game.creeps pass).
  */
 function countHaulersForRoom(roomName) {
-    let count = 0;
-    for (const name in Game.creeps) {
-        const c = Game.creeps[name];
-        if (c.memory.role === "remoteHauler" && c.memory.targetRoom === roomName) {
-            count++;
-        }
-    }
-    return count;
+    var _a;
+    return (_a = (0, creepCensus_1.getCensus)().haulersByRoom[roomName]) !== null && _a !== void 0 ? _a : 0;
 }
 /**
  * Get the effective energy capacity for spawning across all owned spawns.
@@ -214,8 +203,13 @@ function evaluateRemoteRoom(room, homeRoom) {
 /**
  * Find the best source candidate across all owned rooms.
  * For each owned room, look at adjacent rooms with intel and score them.
+ *
+ * Two evaluation paths:
+ *   1. Room is currently visible → full evaluateRemoteRoom (hostile/keeper checks).
+ *   2. Room not visible but scouted → use Memory.expansion.scoutedSources.
  */
 function findBestRemoteSource() {
+    var _a, _b;
     const ops = ensureMem().ops;
     // Best source we've found across all rooms
     let best = null;
@@ -230,14 +224,38 @@ function findBestRemoteSource() {
             if (ops[adjName] && ops[adjName].state === "active")
                 continue;
             const adjRoom = Game.rooms[adjName];
-            if (!adjRoom || !hasIntel(adjName))
-                continue;
-            const sources = evaluateRemoteRoom(adjRoom, roomName);
+            let sources = [];
+            if (adjRoom) {
+                // Path 1: room is currently visible — full evaluation with safety checks
+                sources = evaluateRemoteRoom(adjRoom, roomName);
+            }
+            else if (hasIntel(adjName)) {
+                // Path 2: room not visible but we have scouted source data
+                const scoutedSrcs = (_b = (_a = Memory.expansion) === null || _a === void 0 ? void 0 : _a.scoutedSources) === null || _b === void 0 ? void 0 : _b[adjName];
+                if (scoutedSrcs && scoutedSrcs.length > 0) {
+                    // Use scouted positions; can't verify hostiles/keepers but that's
+                    // acceptable — the remoteHarvester will flee if things go bad
+                    // (future enhancement).
+                    for (const ss of scoutedSrcs) {
+                        sources.push({
+                            id: ss.id,
+                            x: ss.x,
+                            y: ss.y,
+                            roomName: adjName,
+                            assignedHarvesters: MAX_HARVESTERS_PER_SOURCE,
+                            assignedHaulers: MAX_HAULERS_PER_SOURCE,
+                        });
+                    }
+                }
+            }
             for (const src of sources) {
                 // Score: prefer rooms with more sources, closer to home
                 let score = 100;
                 // Bonus for each source in the room
                 score += sources.length * 50;
+                // Slight penalty for non-visible rooms (can't verify safety)
+                if (!adjRoom)
+                    score -= 20;
                 // Bonus for shorter distance (approximate with range)
                 const dist = Game.map.getRoomLinearDistance(roomName, adjName);
                 score -= dist * 20;
