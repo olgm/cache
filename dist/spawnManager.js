@@ -25,13 +25,19 @@ function bodyCost(body) {
  * Choose the next creep role to spawn.
  * Returns null when all target counts are met.
  * Uses the pre-built creep census (no Game.creeps iteration).
+ *
+ * When `starvingRemote` is true, only consider harvester (skip builder/upgrader)
+ * to conserve energy for the remote harvester spawn.
  */
-function pickRole() {
+function pickRole(starvingRemote = false) {
     var _a;
     const census = (0, creepCensus_1.getCensus)();
     let bestRole = null;
     let bestPriority = Infinity;
-    for (const role of ["harvester", "builder", "upgrader"]) {
+    const rolesToConsider = starvingRemote
+        ? ["harvester"]
+        : ["harvester", "builder", "upgrader"];
+    for (const role of rolesToConsider) {
         const current = (_a = census.roleCounts[role]) !== null && _a !== void 0 ? _a : 0;
         if (current >= types_1.TARGET_COUNTS[role])
             continue;
@@ -83,12 +89,35 @@ function trySpawnSpecial(spawn) {
     return false;
 }
 /**
+ * Return true if any active remote op currently has zero harvesters.
+ * Used to boost priority — an op with no harvester produces zero energy
+ * and needs urgent attention.
+ */
+function remoteOpNeedsHarvester() {
+    var _a, _b;
+    const ops = (_a = Memory.remoteMining) === null || _a === void 0 ? void 0 : _a.ops;
+    if (!ops)
+        return false;
+    for (const key in ops) {
+        const op = ops[key];
+        if (op.state !== "active")
+            continue;
+        // Check via census whether any harvester is assigned to this op's sources
+        const census = (0, creepCensus_1.getCensus)();
+        for (const src of op.sources) {
+            if (((_b = census.harvestersBySource[src.id]) !== null && _b !== void 0 ? _b : 0) === 0)
+                return true;
+        }
+    }
+    return false;
+}
+/**
  * Run the spawn manager for a single spawn.
  * Attempts to spawn the highest-priority missing creep.
  *
  * Strategy: interleave base roles with remote-mining spawns.
- * If we have at least one harvester and a remote-mining op is active,
- * allow remote spawns to compete with base roles (every 3rd tick).
+ * If a remote op is starving (0 harvesters), remote spawns compete
+ * every tick.  Otherwise, remote spawns compete every 3rd tick.
  * This avoids the chicken-and-egg deadlock where base roles never
  * fully satisfy and remote mining never starts.
  */
@@ -98,15 +127,20 @@ function runSpawn(spawn) {
         return; // already busy
     const census = (0, creepCensus_1.getCensus)();
     const hasHarvester = ((_a = census.roleCounts["harvester"]) !== null && _a !== void 0 ? _a : 0) > 0;
-    // Allow remote-mining spawns to compete with base roles every 3rd tick,
-    // but only if we have at least one harvester keeping the energy flowing.
-    const tryRemoteNow = hasHarvester && Game.time % 3 === 0;
+    const starvingRemote = remoteOpNeedsHarvester();
+    // Allow remote-mining spawns to compete with base roles:
+    //   - every tick if a remote op is starving (0 harvesters)
+    //   - every 3rd tick otherwise (but only if we have a harvester)
+    const tryRemoteNow = (starvingRemote && hasHarvester) ||
+        (hasHarvester && Game.time % 3 === 0);
     if (tryRemoteNow) {
         if (trySpawnSpecial(spawn))
             return;
     }
-    // Satisfy base roles (harvester, builder, upgrader)
-    const role = pickRole();
+    // Satisfy base roles (harvester, builder, upgrader) —
+    // but if a remote op is starving, only spawn harvesters (not builders/upgraders)
+    // to preserve energy for the remote harvester.
+    const role = pickRole(starvingRemote);
     if (role) {
         const body = types_1.TIER1_BODIES[role];
         if (!body)

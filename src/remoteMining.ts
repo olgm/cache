@@ -75,12 +75,17 @@ const MAX_ROOM_RANGE = 1;
  * Costs (WORK=100, CARRY=50, MOVE=50):
  *   200+ → [WORK, CARRY, MOVE]              (200e, 2e/tick mine, 50 cap)
  *   300+ → [WORK, WORK, CARRY, MOVE]         (300e, 4e/tick mine, 50 cap)
- *   450+ → [WORK, WORK, WORK, CARRY, MOVE, MOVE]  (450e, 6e/tick mine, 50 cap)
- *   550+ → [WORK, WORK, WORK, CARRY, CARRY, MOVE, MOVE, MOVE] (550e, 6e/tick, 100 cap)
+ *   400+ → [WORK, WORK, CARRY, MOVE, MOVE]   (350e, 4e/tick mine, 50 cap)
+ *   550+ → [WORK, WORK, WORK, CARRY, MOVE, MOVE]  (450e, 6e/tick mine, 50 cap)
+ *
+ * NOTE: The 550+ tier caps at 450e (not 550e) deliberately — remote
+ * harvesters drop energy for haulers so extra CARRY adds little value,
+ * and keeping the body cheaper lets it spawn sooner when base roles
+ * compete for energy.
  */
 function selectRemoteHarvesterBody(energyCapacity: number): BodyPartConstant[] {
-  if (energyCapacity >= 550) return [WORK, WORK, WORK, CARRY, CARRY, MOVE, MOVE, MOVE];
-  if (energyCapacity >= 450) return [WORK, WORK, WORK, CARRY, MOVE, MOVE];
+  if (energyCapacity >= 550) return [WORK, WORK, WORK, CARRY, MOVE, MOVE];
+  if (energyCapacity >= 400) return [WORK, WORK, CARRY, MOVE, MOVE];
   if (energyCapacity >= 300) return [WORK, WORK, CARRY, MOVE];
   return [WORK, CARRY, MOVE]; // floor: 200e (works even with 300-cap spawns)
 }
@@ -458,22 +463,16 @@ export function getRemoteMiningSpawnRequest(): RemoteSpawnRequest | null {
       const harvCost = harvBody.reduce((s, p) => s + BODY_COST[p], 0);
       const haulerCost = haulerBody.reduce((s, p) => s + BODY_COST[p], 0);
 
-      // If both are missing, prefer the one we can actually afford.
-      // Haulers are cheaper and deliver energy; they can bootstrap the
-      // operation while energy accumulates for the harvester.
+      // Harvester MUST spawn before hauler — a hauler with no harvester
+      // producing energy in the remote room has nothing to collect and
+      // wastes its lifespan.  Only spawn a hauler when a harvester is
+      // already alive (or we can afford both right now, in which case
+      // the harvester goes first and hauler follows on a later tick).
       const needHarv = hCount < src.assignedHarvesters;
       const needHauler = haulCount < src.assignedHaulers;
+      const hasHarvester = hCount > 0;
 
-      if (needHauler && available >= haulerCost) {
-        return {
-          role: "remoteHauler",
-          body: haulerBody,
-          priority: 4,
-          targetId: op.roomName,
-          homeRoom: op.homeRoom,
-        };
-      }
-
+      // 1. Harvester first — always
       if (needHarv && available >= harvCost) {
         return {
           role: "remoteHarvester",
@@ -484,8 +483,8 @@ export function getRemoteMiningSpawnRequest(): RemoteSpawnRequest | null {
         };
       }
 
-      // If we need a harvester but can't afford it, try the cheaper hauler
-      if (needHauler && available >= haulerCost) {
+      // 2. Hauler only when a harvester already exists to supply it
+      if (needHauler && hasHarvester && available >= haulerCost) {
         return {
           role: "remoteHauler",
           body: haulerBody,
@@ -494,6 +493,11 @@ export function getRemoteMiningSpawnRequest(): RemoteSpawnRequest | null {
           homeRoom: op.homeRoom,
         };
       }
+
+      // 3. If harvester is unaffordable but hauler is possible AND we
+      //    already have a harvester, still spawn the hauler (handles edge
+      //    case where energy dipped between checks).
+      //    (This is already covered by case 2 above.)
     }
   }
 
