@@ -1,10 +1,13 @@
 /**
- * Cache v0.1.1 — Remote hauler role.
+ * Cache v0.1.2 — Remote hauler role.
  *
  * Moves between a home room and a remote room, picking up dropped energy
  * from remote harvesters and delivering it to spawn/extension/storage.
  *
- * v0.1.1 CPU optimisations:
+ * v0.1.2 improvements:
+ *   - Tracks energy delivered in Memory.remoteMining for productivity metrics.
+ *   - Picks up energy from tombstones & ruins in the remote room.
+ *   - Lowered minimum pickup threshold (20e instead of 50e).
  *   - Uses room-level cached structure list + findClosestByRange instead of
  *     per-creep findClosestByPath in the home room (big CPU saving).
  *   - Caches inter-room paths in creep memory (25-tick reuse).
@@ -12,6 +15,13 @@
  */
 
 import { cached, roomStructures, F_ENERGY_SINK } from "../utils/cache";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Minimum energy amount worth picking up (lower = more frugal, but more trips). */
+const MIN_PICKUP_AMOUNT = 20;
 
 // ---------------------------------------------------------------------------
 // Path caching (same pattern as upgrader — avoids per-tick pathfinding)
@@ -98,7 +108,10 @@ export function runRemoteHauler(creep: Creep): void {
       if (tsinks.length > 0) {
         const t = creep.pos.findClosestByRange(tsinks);
         if (t) {
-          if (creep.transfer(t, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+          const ret = creep.transfer(t, RESOURCE_ENERGY);
+          if (ret === OK) {
+            recordDelivery(targetRoom);
+          } else if (ret === ERR_NOT_IN_RANGE) {
             moveCached(creep, t.pos, `deliver_${t.id}`);
           }
         }
@@ -108,7 +121,10 @@ export function runRemoteHauler(creep: Creep): void {
 
     const target = creep.pos.findClosestByRange(sinks);
     if (target) {
-      if (creep.transfer(target, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+      const ret = creep.transfer(target, RESOURCE_ENERGY);
+      if (ret === OK) {
+        recordDelivery(targetRoom);
+      } else if (ret === ERR_NOT_IN_RANGE) {
         moveCached(creep, target.pos, `deliver_${target.id}`);
       }
     }
@@ -119,16 +135,59 @@ export function runRemoteHauler(creep: Creep): void {
       return;
     }
 
-    // Use findClosestByRange for dropped energy (much cheaper than findClosestByPath)
+    // 1. Try dropped resources first (cheapest — FIND_DROPPED_RESOURCES is fast)
     const dropped = creep.pos.findClosestByRange(FIND_DROPPED_RESOURCES, {
-      filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount > 50,
+      filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount >= MIN_PICKUP_AMOUNT,
     });
 
     if (dropped) {
       if (creep.pickup(dropped) === ERR_NOT_IN_RANGE) {
         moveCached(creep, dropped.pos, `pickup_${dropped.id}`);
       }
+      return;
     }
+
+    // 2. Try tombstones (recover energy from dead creeps)
+    const tomb = creep.pos.findClosestByRange(FIND_TOMBSTONES, {
+      filter: (t) => t.store.getUsedCapacity(RESOURCE_ENERGY) >= MIN_PICKUP_AMOUNT,
+    });
+    if (tomb) {
+      if (creep.withdraw(tomb, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+        moveCached(creep, tomb.pos, `tomb_${tomb.id}`);
+      }
+      return;
+    }
+
+    // 3. Try ruins (may contain energy)
+    const ruin = creep.pos.findClosestByRange(FIND_RUINS, {
+      filter: (r) =>
+        r.store.getUsedCapacity(RESOURCE_ENERGY) !== null &&
+        (r.store.getUsedCapacity(RESOURCE_ENERGY) ?? 0) >= MIN_PICKUP_AMOUNT,
+    });
+    if (ruin) {
+      if (creep.withdraw(ruin, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+        moveCached(creep, ruin.pos, `ruin_${ruin.id}`);
+      }
+      return;
+    }
+
     // else: no energy to pick up; wait — no movement needed, saving CPU
   }
+}
+
+// ---------------------------------------------------------------------------
+// Delivery tracking
+// ---------------------------------------------------------------------------
+
+/**
+ * Increment the totalHauled counter and update lastHaulTick for the
+ * remote op, so the remote-mining manager can gauge productivity.
+ */
+function recordDelivery(remoteRoom: string): void {
+  if (!Memory.remoteMining || !Memory.remoteMining.ops) return;
+  const op = Memory.remoteMining.ops[remoteRoom];
+  if (!op) return;
+
+  op.totalHauled = (op.totalHauled ?? 0) + 1;
+  op.lastHaulTick = Game.time;
 }

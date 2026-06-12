@@ -1,5 +1,5 @@
 /**
- * Cache v0.1.0 — Remote-mining manager.
+ * Cache v0.1.3 — Remote-mining manager.
  *
  * Drives exploitation of sources in adjacent (non-owned) rooms:
  *   1. Evaluate adjacent rooms for viable remote sources (use expansion intel).
@@ -10,7 +10,8 @@
  *
  * State persisted in Memory.remoteMining.
  *
- * v0.1.2 — GCL gate lowered + energy-aware bodies + harvest tracking.
+ * v0.1.3 — Productivity-aware: deactivates ops that haven't hauled in 1500
+ * ticks. Uses creep census instead of per-function O(n) scans.
  *
  * Design constraints:
  *   - Only adjacent rooms (range 1) for now — keeps pathing cheap.
@@ -29,6 +30,7 @@ import {
   defaultRemoteMiningMemory,
   CreepRole,
 } from "./types";
+import { getCensus } from "./utils/creepCensus";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -119,45 +121,6 @@ function hasIntel(roomName: string): boolean {
     return Game.time - mem.scoutedRooms[roomName] < 1500;
   }
   return false;
-}
-
-/** Count living creeps of a given role. */
-function countRole(role: CreepRole): number {
-  let count = 0;
-  for (const name in Game.creeps) {
-    if (Game.creeps[name].memory.role === role) count++;
-  }
-  return count;
-}
-
-/**
- * Count living remote harvesters assigned to a specific source id.
- * Remote harvesters store the source id in creep.memory.sourceId.
- */
-function countHarvestersForSource(sourceId: string): number {
-  let count = 0;
-  for (const name in Game.creeps) {
-    const c = Game.creeps[name];
-    if (c.memory.role === "remoteHarvester" && c.memory.sourceId === sourceId) {
-      count++;
-    }
-  }
-  return count;
-}
-
-/**
- * Count living remote haulers assigned to a specific remote room.
- * Remote haulers store the target room in creep.memory.targetRoom.
- */
-function countHaulersForRoom(roomName: string): number {
-  let count = 0;
-  for (const name in Game.creeps) {
-    const c = Game.creeps[name];
-    if (c.memory.role === "remoteHauler" && c.memory.targetRoom === roomName) {
-      count++;
-    }
-  }
-  return count;
 }
 
 /**
@@ -329,6 +292,25 @@ export function runRemoteMiningManager(): void {
         continue;
       }
 
+      // Check productivity: if no energy hauled in 1500 ticks, the op is
+      // probably stuck (dead haulers, blocked path, etc.). Withdraw.
+      const idleThreshold = 1500;
+      if (
+        op.lastHaulTick !== undefined &&
+        op.lastHaulTick > 0 &&
+        Game.time - op.lastHaulTick > idleThreshold &&
+        op.totalHauled !== undefined &&
+        op.totalHauled > 0
+      ) {
+        // Was productive but went silent — likely path blocked or haulers died
+        op.state = "idle";
+        console.log(
+          `RemoteMining: withdrawing from ${op.roomName} ` +
+          `(unproductive for ${Game.time - op.lastHaulTick} ticks)`,
+        );
+        continue;
+      }
+
       // Refresh source info
       const freshSources = evaluateRemoteRoom(room, op.homeRoom);
       if (freshSources.length === 0) {
@@ -404,8 +386,8 @@ export function getRemoteMiningSpawnRequest(): RemoteSpawnRequest | null {
     if (op.state !== "active") continue;
 
     for (const src of op.sources) {
-      // Check for missing harvesters
-      const hCount = countHarvestersForSource(src.id);
+      // Check for missing harvesters (via census)
+      const hCount = getCensus().harvestersBySource[src.id] ?? 0;
       if (hCount < src.assignedHarvesters) {
         const cap = effectiveEnergyCapacity();
         return {
@@ -416,8 +398,8 @@ export function getRemoteMiningSpawnRequest(): RemoteSpawnRequest | null {
         };
       }
 
-      // Check for missing haulers
-      const haulCount = countHaulersForRoom(op.roomName);
+      // Check for missing haulers (via census)
+      const haulCount = getCensus().haulersByRoom[op.roomName] ?? 0;
       if (haulCount < src.assignedHaulers) {
         const cap = effectiveEnergyCapacity();
         return {

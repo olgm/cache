@@ -1,5 +1,5 @@
 /**
- * Cache v0.1.0 — Remote-mining manager.
+ * Cache v0.1.3 — Remote-mining manager.
  *
  * Drives exploitation of sources in adjacent (non-owned) rooms:
  *   1. Evaluate adjacent rooms for viable remote sources (use expansion intel).
@@ -10,7 +10,8 @@
  *
  * State persisted in Memory.remoteMining.
  *
- * v0.1.2 — GCL gate lowered + energy-aware bodies + harvest tracking.
+ * v0.1.3 — Productivity-aware: deactivates ops that haven't hauled in 1500
+ * ticks. Uses creep census instead of per-function O(n) scans.
  *
  * Design constraints:
  *   - Only adjacent rooms (range 1) for now — keeps pathing cheap.
