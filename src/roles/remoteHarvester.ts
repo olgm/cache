@@ -52,7 +52,19 @@ export function runRemoteHarvester(creep: Creep): void {
     return;
   }
 
-  const source = Game.getObjectById(creep.memory.sourceId);
+  let source = Game.getObjectById(creep.memory.sourceId);
+
+  // Handle fallback/unknown source ids — when the remote-mining module
+  // established an op from scout intel without exact source positions.
+  // In that case we look up the first visible source when we enter the room.
+  if (!source && creep.memory.targetRoom) {
+    const sourcesInRoom = creep.room.find(FIND_SOURCES);
+    if (sourcesInRoom.length > 0) {
+      source = sourcesInRoom[0];
+      // Update memory so we don't re-scan every tick
+      creep.memory.sourceId = source.id;
+    }
+  }
 
   // If source is gone (destroyed or room changed), return home.
   // Do NOT return home just because energy is 0 — sources regenerate.

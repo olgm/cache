@@ -43,6 +43,10 @@ export declare function runRemoteMiningManager(): void;
  *
  * Checks each active remote op for missing harvesters/haulers.
  * Uses energy-aware body selection based on room capacity.
+ *
+ * v0.1.3 — Energy-aware ordering: prefers cheaper bodies (hauler first)
+ * when energy is tight, avoiding the deadlock where an unaffordable
+ * harvester body blocks a cheaper hauler from spawning.
  */
 export declare function getRemoteMiningSpawnRequest(): RemoteSpawnRequest | null;
 /**

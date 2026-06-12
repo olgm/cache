@@ -237,8 +237,7 @@ function findBestRemoteSource() {
                 const scoutedSrcs = (_b = (_a = Memory.expansion) === null || _a === void 0 ? void 0 : _a.scoutedSources) === null || _b === void 0 ? void 0 : _b[adjName];
                 if (scoutedSrcs && scoutedSrcs.length > 0) {
                     // Use scouted positions; can't verify hostiles/keepers but that's
-                    // acceptable — the remoteHarvester will flee if things go bad
-                    // (future enhancement).
+                    // acceptable — the remoteHarvester will flee if things go bad.
                     for (const ss of scoutedSrcs) {
                         sources.push({
                             id: ss.id,
@@ -249,6 +248,23 @@ function findBestRemoteSource() {
                             assignedHaulers: MAX_HAULERS_PER_SOURCE,
                         });
                     }
+                }
+                else {
+                    // Fallback: we have intel (scout visited) but no per-source data
+                    // recorded (e.g. old scout code before recordScoutSources was added).
+                    // Assume 1 source at room centre — the remoteHarvester will locate
+                    // it via Game.getObjectById when it arrives.  Mark it with a
+                    // synthetic id so we can still establish the op.
+                    console.log(`RemoteMining: room ${adjName} has intel but no scouted sources — ` +
+                        `using fallback (centre-of-room heuristic).`);
+                    sources.push({
+                        id: `fallback_${adjName}`,
+                        x: 25,
+                        y: 25,
+                        roomName: adjName,
+                        assignedHarvesters: MAX_HARVESTERS_PER_SOURCE,
+                        assignedHaulers: MAX_HAULERS_PER_SOURCE,
+                    });
                 }
             }
             for (const src of sources) {
@@ -360,33 +376,54 @@ function runRemoteMiningManager() {
  *
  * Checks each active remote op for missing harvesters/haulers.
  * Uses energy-aware body selection based on room capacity.
+ *
+ * v0.1.3 — Energy-aware ordering: prefers cheaper bodies (hauler first)
+ * when energy is tight, avoiding the deadlock where an unaffordable
+ * harvester body blocks a cheaper hauler from spawning.
  */
 function getRemoteMiningSpawnRequest() {
     const mem = ensureMem();
+    const cap = effectiveEnergyCapacity();
+    const available = Math.max(...Object.values(Game.spawns).map((s) => s.room.energyAvailable), 0);
     for (const key in mem.ops) {
         const op = mem.ops[key];
         if (op.state !== "active")
             continue;
         for (const src of op.sources) {
-            // Check for missing harvesters
             const hCount = countHarvestersForSource(src.id);
-            if (hCount < src.assignedHarvesters) {
-                const cap = effectiveEnergyCapacity();
+            const haulCount = countHaulersForRoom(op.roomName);
+            const harvBody = selectRemoteHarvesterBody(cap);
+            const haulerBody = selectRemoteHaulerBody(cap);
+            const harvCost = harvBody.reduce((s, p) => s + types_1.BODY_COST[p], 0);
+            const haulerCost = haulerBody.reduce((s, p) => s + types_1.BODY_COST[p], 0);
+            // If both are missing, prefer the one we can actually afford.
+            // Haulers are cheaper and deliver energy; they can bootstrap the
+            // operation while energy accumulates for the harvester.
+            const needHarv = hCount < src.assignedHarvesters;
+            const needHauler = haulCount < src.assignedHaulers;
+            if (needHauler && available >= haulerCost) {
+                return {
+                    role: "remoteHauler",
+                    body: haulerBody,
+                    priority: 4,
+                    targetId: op.roomName,
+                    homeRoom: op.homeRoom,
+                };
+            }
+            if (needHarv && available >= harvCost) {
                 return {
                     role: "remoteHarvester",
-                    body: selectRemoteHarvesterBody(cap),
+                    body: harvBody,
                     priority: 3,
                     targetId: src.id,
                     homeRoom: op.homeRoom,
                 };
             }
-            // Check for missing haulers
-            const haulCount = countHaulersForRoom(op.roomName);
-            if (haulCount < src.assignedHaulers) {
-                const cap = effectiveEnergyCapacity();
+            // If we need a harvester but can't afford it, try the cheaper hauler
+            if (needHauler && available >= haulerCost) {
                 return {
                     role: "remoteHauler",
-                    body: selectRemoteHaulerBody(cap),
+                    body: haulerBody,
                     priority: 4,
                     targetId: op.roomName,
                     homeRoom: op.homeRoom,

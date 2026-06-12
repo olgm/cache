@@ -50,22 +50,7 @@ let nextId = 1;
  * Returns true if a spawn was queued.
  */
 function trySpawnSpecial(spawn) {
-    // 1. Expansion (claimer/scout)
-    const expReq = (0, expansion_1.getExpansionSpawnRequest)();
-    if (expReq) {
-        const cost = bodyCost(expReq.body);
-        if (spawn.room.energyAvailable >= cost) {
-            const name = `${expReq.role}_${nextId++}_${Game.time}`;
-            const ret = spawn.spawnCreep(expReq.body, name, {
-                memory: { role: expReq.role },
-            });
-            if (ret === OK) {
-                (0, expansion_1.onExpansionSpawn)(expReq.role, name);
-                return true;
-            }
-        }
-    }
-    // 2. Remote mining (remoteHarvester / remoteHauler)
+    // 1. Remote mining (remoteHarvester / remoteHauler) — produces energy, try first
     const remoteReq = (0, remoteMining_1.getRemoteMiningSpawnRequest)();
     if (remoteReq) {
         const cost = bodyCost(remoteReq.body);
@@ -80,16 +65,47 @@ function trySpawnSpecial(spawn) {
             }
         }
     }
+    // 2. Expansion (claimer/scout)
+    const expReq = (0, expansion_1.getExpansionSpawnRequest)();
+    if (expReq) {
+        const cost = bodyCost(expReq.body);
+        if (spawn.room.energyAvailable >= cost) {
+            const name = `${expReq.role}_${nextId++}_${Game.time}`;
+            const ret = spawn.spawnCreep(expReq.body, name, {
+                memory: { role: expReq.role },
+            });
+            if (ret === OK) {
+                (0, expansion_1.onExpansionSpawn)(expReq.role, name);
+                return true;
+            }
+        }
+    }
     return false;
 }
 /**
  * Run the spawn manager for a single spawn.
  * Attempts to spawn the highest-priority missing creep.
+ *
+ * Strategy: interleave base roles with remote-mining spawns.
+ * If we have at least one harvester and a remote-mining op is active,
+ * allow remote spawns to compete with base roles (every 3rd tick).
+ * This avoids the chicken-and-egg deadlock where base roles never
+ * fully satisfy and remote mining never starts.
  */
 function runSpawn(spawn) {
+    var _a;
     if (spawn.spawning)
         return; // already busy
-    // First: satisfy base roles (harvester, builder, upgrader)
+    const census = (0, creepCensus_1.getCensus)();
+    const hasHarvester = ((_a = census.roleCounts["harvester"]) !== null && _a !== void 0 ? _a : 0) > 0;
+    // Allow remote-mining spawns to compete with base roles every 3rd tick,
+    // but only if we have at least one harvester keeping the energy flowing.
+    const tryRemoteNow = hasHarvester && Game.time % 3 === 0;
+    if (tryRemoteNow) {
+        if (trySpawnSpecial(spawn))
+            return;
+    }
+    // Satisfy base roles (harvester, builder, upgrader)
     const role = pickRole();
     if (role) {
         const body = types_1.TIER1_BODIES[role];
