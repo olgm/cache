@@ -15,18 +15,17 @@
 
 const PATH_CACHE_TTL = 25;
 
-function moveCached(
-  creep: Creep,
-  dest: RoomPosition,
-  key: string,
-): void {
+function moveCached(creep: Creep, dest: RoomPosition, key: string): void {
   const ageKey = `rhv_pa_${key}`;
   const pathKey = `rhv_pp_${key}`;
   const mem = creep.memory as Record<string, unknown>;
   const age = (mem[ageKey] as number) ?? 999;
 
   if (age > PATH_CACHE_TTL) {
-    const path = creep.pos.findPathTo(dest, { maxOps: 200, ignoreCreeps: false });
+    const path = creep.pos.findPathTo(dest, {
+      maxOps: 200,
+      ignoreCreeps: false,
+    });
     mem[pathKey] = Room.serializePath(path);
     mem[ageKey] = 0;
   }
@@ -71,8 +70,19 @@ export function runRemoteHarvester(creep: Creep): void {
     return;
   }
 
-  // In the source room: harvest, dropping when full so haulers can collect
+  // In the source room: harvest, prefer transferring to nearby hauler
   if (creep.store.getFreeCapacity() === 0) {
+    // Try direct transfer to a hauler in range 1 — avoids decay loss
+    const hauler = creep.pos.findInRange(FIND_MY_CREEPS, 1, {
+      filter: (c) =>
+        c.memory.role === "remoteHauler" &&
+        c.store.getFreeCapacity(RESOURCE_ENERGY) > 0,
+    });
+    if (hauler.length > 0) {
+      creep.transfer(hauler[0], RESOURCE_ENERGY);
+      return;
+    }
+    // No hauler nearby — drop on ground for later pickup
     creep.drop(RESOURCE_ENERGY);
     return;
   }

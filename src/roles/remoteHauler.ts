@@ -14,23 +14,33 @@
 import { cached, roomStructures, F_ENERGY_SINK } from "../utils/cache";
 
 // ---------------------------------------------------------------------------
+// Haul tracking — update the remote op so we can measure throughput
+// ---------------------------------------------------------------------------
+
+function recordHaul(roomName: string, amount: number): void {
+  const ops = Memory.remoteMining?.ops;
+  if (!ops || !ops[roomName]) return;
+  ops[roomName].totalHauled = (ops[roomName].totalHauled ?? 0) + amount;
+  ops[roomName].lastHaulTick = Game.time;
+}
+
+// ---------------------------------------------------------------------------
 // Path caching (same pattern as upgrader — avoids per-tick pathfinding)
 // ---------------------------------------------------------------------------
 
 const PATH_CACHE_TTL = 25;
 
-function moveCached(
-  creep: Creep,
-  dest: RoomPosition,
-  key: string,
-): void {
+function moveCached(creep: Creep, dest: RoomPosition, key: string): void {
   const ageKey = `rh_pa_${key}`;
   const pathKey = `rh_pp_${key}`;
   const mem = creep.memory as Record<string, unknown>;
   const age = (mem[ageKey] as number) ?? 999;
 
   if (age > PATH_CACHE_TTL) {
-    const path = creep.pos.findPathTo(dest, { maxOps: 200, ignoreCreeps: false });
+    const path = creep.pos.findPathTo(dest, {
+      maxOps: 200,
+      ignoreCreeps: false,
+    });
     mem[pathKey] = Room.serializePath(path);
     mem[ageKey] = 0;
   }
@@ -54,7 +64,9 @@ export function runRemoteHauler(creep: Creep): void {
   const homeRoom = creep.memory.homeRoom;
 
   if (!targetRoom || !homeRoom) {
-    console.log(`RemoteHauler ${creep.name}: missing target/home room, suiciding.`);
+    console.log(
+      `RemoteHauler ${creep.name}: missing target/home room, suiciding.`,
+    );
     creep.suicide();
     return;
   }
@@ -108,7 +120,14 @@ export function runRemoteHauler(creep: Creep): void {
 
     const target = creep.pos.findClosestByRange(sinks);
     if (target) {
-      if (creep.transfer(target, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+      const carried = creep.store.getUsedCapacity(RESOURCE_ENERGY);
+      const result = creep.transfer(target, RESOURCE_ENERGY);
+      if (result === OK && carried > 0) {
+        // Track throughput for the remote op (amount = what we just delivered)
+        const delivered =
+          carried - creep.store.getUsedCapacity(RESOURCE_ENERGY);
+        recordHaul(targetRoom, delivered);
+      } else if (result === ERR_NOT_IN_RANGE) {
         moveCached(creep, target.pos, `deliver_${target.id}`);
       }
     }
@@ -119,7 +138,7 @@ export function runRemoteHauler(creep: Creep): void {
       return;
     }
 
-    // Use findClosestByRange for dropped energy (much cheaper than findClosestByPath)
+    // Priority 1: dropped energy on the ground
     const dropped = creep.pos.findClosestByRange(FIND_DROPPED_RESOURCES, {
       filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount > 0,
     });
@@ -128,7 +147,28 @@ export function runRemoteHauler(creep: Creep): void {
       if (creep.pickup(dropped) === ERR_NOT_IN_RANGE) {
         moveCached(creep, dropped.pos, `pickup_${dropped.id}`);
       }
+      return;
     }
-    // else: no energy to pick up; wait — no movement needed, saving CPU
+
+    // Priority 2: harvester carrying energy — move near it so it can transfer
+    const harvester = creep.pos.findClosestByRange(FIND_MY_CREEPS, {
+      filter: (c) =>
+        c.memory.role === "remoteHarvester" &&
+        c.store.getUsedCapacity(RESOURCE_ENERGY) > 0,
+    });
+
+    if (harvester) {
+      // If in range 1, the harvester will transfer to us next tick
+      if (creep.pos.getRangeTo(harvester) <= 1) {
+        // Wait — harvester will transfer when it's full or on its next action
+        return;
+      }
+      moveCached(creep, harvester.pos, `nearHrv_${harvester.id}`);
+      return;
+    }
+
+    // Nothing to collect: return home to save CPU and avoid idle risk
+    moveCached(creep, new RoomPosition(25, 25, homeRoom), "homeIdle");
+    return;
   }
 }
