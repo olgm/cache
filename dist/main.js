@@ -40,7 +40,7 @@ const ROLE_RUNNERS = {
     pioneer: pioneer_1.runPioneer,
 };
 /** Bumped to trigger a one-time Memory migration on deploy. */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 function loop() {
     var _a;
     cleanupCreepMemory();
@@ -71,17 +71,34 @@ function cleanupCreepMemory() {
             delete Memory.creeps[name];
     }
 }
-/** One-time cleanup of removed subsystems and corrupt legacy state. */
+/** One-time cleanup of removed subsystems and corrupt/fossil legacy state. */
 function migrate() {
     if (Memory.version === SCHEMA_VERSION)
         return;
+    const legacy = Memory;
     // Remote-mining was removed — drop its (inert) memory.
-    delete Memory.remoteMining;
+    delete legacy.remoteMining;
+    // Fossil blobs from prior bot architectures that nothing reads any more
+    // (~200KB of dead weight: per-tick telemetry, empire, lastTick).
+    delete legacy.telemetry;
+    delete legacy.empire;
+    delete legacy.lastTick;
     // The legacy expansion state was wedged (claiming an unreachable room); reset
     // it so the gated manager re-initialises a clean default.
     Memory.expansion = undefined;
+    // Purge ghost-room memory: ~100 rooms from old scouting we don't own, plus
+    // legacy-shaped entries for rooms we do own (the planner re-initialises ours).
+    if (Memory.rooms) {
+        for (const name in Memory.rooms) {
+            const room = Game.rooms[name];
+            if (room && room.controller && room.controller.my)
+                Memory.rooms[name] = {};
+            else
+                delete Memory.rooms[name];
+        }
+    }
     Memory.version = SCHEMA_VERSION;
-    console.log(`CACHE: migrated Memory to schema v${SCHEMA_VERSION}`);
+    console.log(`CACHE: migrated Memory to schema v${SCHEMA_VERSION} (purged fossil state)`);
 }
 function runSubsystem(label, fn) {
     var _a;
