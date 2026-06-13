@@ -200,31 +200,42 @@ function roleTargets(data, current) {
         }
         else if (storage) {
             const e = storage.store[RESOURCE_ENERGY];
-            upg = Math.min(5, 2 + Math.floor(e / 15000));
+            upg = Math.min(6, 2 + Math.floor(e / 12000));
         }
         else {
-            // No storage yet: scale by RCL and containerization.  At RCL 3 with two
-            // container-mined sources the colony produces ~20 energy/tick — enough
-            // to keep 3-4 upgraders busy when spawn+extensions are full.
+            // No storage yet: scale by RCL and containerization.  At RCL 3–4 with two
+            // container-mined sources the colony produces ~20 energy/tick net; each
+            // RCL-3 upgrader (3 WORK) burns 3 energy/tick upgrading, so 4–5 upgraders
+            // convert most surplus into control points — accelerating both RCL and GCL.
             if (rcl >= 6)
-                upg = 4;
+                upg = 5;
             else if (rcl >= 4)
-                upg = 3;
+                upg = 4;
             else if (rcl >= 3)
-                upg = withContainer > 0 ? 3 : 2;
+                upg = withContainer > 0 ? 4 : 3;
             else
                 upg = withContainer > 0 ? 2 : 1; // RCL 1-2: bootstrap
         }
-        // Waste detection: when spawn+extensions are near full (>80%), harvested
+        // GCL push: when GCL is low (1–3) expansion is gated by control points,
+        // not rooms, so every spare joule must go into the controller.  Add a
+        // permanent +1 upgrader at GCL 1–2, tapering at GCL 3.
+        if (Game.gcl.level <= 2)
+            upg += 1;
+        else if (Game.gcl.level === 3)
+            upg = Math.max(upg, 3);
+        // Waste detection: when spawn+extensions are near full (>60%), harvested
         // energy has nowhere to go — bump the upgrader target so surplus becomes
         // control points instead of decaying in containers or being lost to capped
         // buffers.  Only applies when there's no storage (storage absorbs surplus).
+        // At >90% fill the bump is +2 because energy is flooding the buffers fast.
         if (!storage) {
             const spawnExt = [...data.spawns, ...data.extensions];
             const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY), 0);
             const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-            if (totalCap > 0 && totalE > totalCap * 0.8)
-                upg = Math.max(upg, upg + 1);
+            if (totalCap > 0 && totalE > totalCap * 0.6) {
+                const bump = totalE > totalCap * 0.9 ? 2 : 1;
+                upg = Math.max(upg, upg + bump);
+            }
         }
         targets.upgrader = upg;
     }
@@ -276,6 +287,7 @@ exports.ROLE_PRIORITY = {
     miner: 1,
     hauler: 2,
     defender: 2, // urgent when present
+    remoteHarvester: 3,
     upgrader: 4,
     builder: 5,
     pioneer: 6,

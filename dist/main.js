@@ -38,6 +38,7 @@ const ROLE_RUNNERS = {
     scout: scout_1.runScout,
     claimer: claimer_1.runClaimer,
     pioneer: pioneer_1.runPioneer,
+    remoteHarvester: () => { }, // stub — not yet implemented
 };
 /** Bumped to trigger a one-time Memory migration on deploy. */
 const SCHEMA_VERSION = 4;

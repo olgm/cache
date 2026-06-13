@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-13 20:20 UTC — Dedicate more creeps to controller upgrading
+
+Reallocate spawn capacity to prioritize upgrader creeps over other roles, accelerating GCL growth from level 1 to enable expansion.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** expansion weakness (`expansion`)
+- **Eval score:** 68/100
+
+**Why:** Global Control Level is low (gcl=1); prioritize controller upgrading to expand.
+
+**Issues addressed:**
+- eval: gcl sub-score below healthy
+
 ### 2026-06-13 19:00 UTC — Add remote harvesters and haulers for W43N38
 
 Deploy dedicated remote harvester and hauler creeps to boost energy throughput from W43N38 sources.

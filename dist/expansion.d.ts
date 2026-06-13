@@ -5,15 +5,15 @@
  * old version wedged itself (claiming an unreachable room at GCL1, claimer never
  * able to claim); this one is hard-gated and self-validating:
  *
- *   gate: ownedRooms < GCL (the real claim limit) AND a mature base
- *         (RCL >= 4 with a storage = genuine energy surplus).
+ *   scout gate:   ownedRooms < GCL AND RCL >= 3 (map neighbours early).
+ *   claim gate:   ownedRooms < GCL AND RCL >= 4 AND storage (mature surplus).
  *
  * Flow: idle → scouting (a scout maps adjacent rooms) → claiming (a claimer
  * takes the best adjacent controller) → bootstrapping (pioneers build the new
  * room's first spawn; the construction planner places the spawn site) → idle.
  *
- * At GCL1 / RCL3 (the current live colony) the gate is closed, so this stays
- * dormant and can never wedge — the corrupt legacy state is reset on migration.
+ * Scouting is cheap (one MOVE part) and pays off later when GCL unlocks —
+ * we arrive at GCL 2 with intel already in hand instead of starting blind.
  */
 import { CreepRole } from "./types";
 import { RoomData } from "./utils/roomData";
