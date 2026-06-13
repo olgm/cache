@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-13 23:18 UTC — Boost early-game controller upgrade throughput
+
+Prioritize controller upgrading by reallocating creeps and energy to maximize upgrade-per-tick in the starting room while GCL is still 1.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** expansion weakness (`expansion`)
+- **Eval score:** 68/100
+
+**Why:** Global Control Level is low (gcl=1); prioritize controller upgrading to expand.
+
+**Issues addressed:**
+- eval: gcl sub-score below healthy
+
 ### 2026-06-13 22:37 UTC — Prioritize controller upgrades to accelerate GCL growth
 
 Shift worker energy allocation toward room controller upgrading to increase Global Control Level from 1 and unlock expansion opportunities.
