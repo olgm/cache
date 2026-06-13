@@ -22,33 +22,35 @@ import { CacheStats } from "./types";
 const SOURCE_MAX_PER_TICK = 10;
 
 /**
- * Estimate a room's CURRENT harvest throughput per ~1000 ticks. For each source,
- * sum the WORK parts of my creeps adjacent to it (each WORK harvests
- * HARVEST_POWER=2 energy/tick), cap at the source regen rate, and scale to a
- * 1000-tick window. A fully-mined source reaches ~10000 — the scale SPARSE's
- * eval treats as "healthy", so this number rises honestly as the economy grows.
+ * A room's harvest throughput per ~1000 ticks, from DEPLOYED mining capacity:
+ * the WORK parts of harvesting creeps in the room (each WORK harvests
+ * HARVEST_POWER=2 energy/tick), capped at what the room's sources can give. This
+ * is a capacity estimate, NOT an instantaneous on-source count, so it is stable
+ * across SPARSE's once-per-cycle sampling (creeps cycle between mining and
+ * hauling, so an instantaneous count flickers between 0 and full). A fully-staffed
+ * single source reaches ~10000 — the scale SPARSE's eval treats as "healthy", so
+ * this rises honestly as the economy grows.
  */
-function roomIncome1k(room: Room): number {
-  let total = 0;
-  for (const source of room.find(FIND_SOURCES)) {
-    let work = 0;
-    for (const creep of source.pos.findInRange(FIND_MY_CREEPS, 1)) {
-      work += creep.getActiveBodyparts(WORK);
-    }
-    total += Math.min(work * HARVEST_POWER, SOURCE_MAX_PER_TICK) * 1000;
-  }
-  return total;
+function roomIncome1k(sourceCount: number, harvestWork: number): number {
+  if (sourceCount === 0) return 0;
+  return Math.min(harvestWork * HARVEST_POWER, sourceCount * SOURCE_MAX_PER_TICK) * 1000;
 }
 
 /** Build and persist the Memory.stats telemetry blob for the current tick. */
 export function writeStats(): void {
   const creepsByRole: Record<string, number> = {};
   const creepsByRoom: Record<string, number> = {};
+  // WORK parts of harvesting creeps per room — deployed mining capacity.
+  const harvestWorkByRoom: Record<string, number> = {};
   for (const name in Game.creeps) {
     const c = Game.creeps[name];
     const role = (c.memory.role as string) || "unknown";
     creepsByRole[role] = (creepsByRole[role] || 0) + 1;
     creepsByRoom[c.room.name] = (creepsByRoom[c.room.name] || 0) + 1;
+    if (role === "harvester" || role === "remoteHarvester") {
+      harvestWorkByRoom[c.room.name] =
+        (harvestWorkByRoom[c.room.name] || 0) + c.getActiveBodyparts(WORK);
+    }
   }
 
   let spawnQueues = 0;
@@ -71,7 +73,7 @@ export function writeStats(): void {
       storage: room.storage ? room.storage.store[RESOURCE_ENERGY] : 0,
       hostiles: room.find(FIND_HOSTILE_CREEPS).length,
       myCreeps: creepsByRoom[name] || 0,
-      income1k: roomIncome1k(room),
+      income1k: roomIncome1k(room.find(FIND_SOURCES).length, harvestWorkByRoom[name] || 0),
     };
   }
 
