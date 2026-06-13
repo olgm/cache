@@ -5,15 +5,15 @@
  * old version wedged itself (claiming an unreachable room at GCL1, claimer never
  * able to claim); this one is hard-gated and self-validating:
  *
- *   gate: ownedRooms < GCL (the real claim limit) AND a mature base
- *         (RCL >= 4 with a storage = genuine energy surplus).
+ *   scout gate:   ownedRooms < GCL AND RCL >= 3 (map neighbours early).
+ *   claim gate:   ownedRooms < GCL AND RCL >= 4 AND storage (mature surplus).
  *
  * Flow: idle → scouting (a scout maps adjacent rooms) → claiming (a claimer
  * takes the best adjacent controller) → bootstrapping (pioneers build the new
  * room's first spawn; the construction planner places the spawn site) → idle.
  *
- * At GCL1 / RCL3 (the current live colony) the gate is closed, so this stays
- * dormant and can never wedge — the corrupt legacy state is reset on migration.
+ * Scouting is cheap (one MOVE part) and pays off later when GCL unlocks —
+ * we arrive at GCL 2 with intel already in hand instead of starting blind.
  */
 
 import {
@@ -71,7 +71,14 @@ function pickBaseRoom(): Room | null {
   return best;
 }
 
-/** Gate: room headroom AND a mature, energy-rich base. */
+/** Gate: room headroom AND an established colony — scouting only. */
+function scoutingUnlocked(base: Room): boolean {
+  if (ownedRoomCount() >= Game.gcl.level) return false; // claim limit = GCL
+  if (!base.controller || base.controller.level < 3) return false;
+  return true;
+}
+
+/** Gate: room headroom AND a mature, energy-rich base — full expansion. */
 function expansionUnlocked(base: Room): boolean {
   if (ownedRoomCount() >= Game.gcl.level) return false; // claim limit = GCL
   if (!base.controller || base.controller.level < 4) return false;
@@ -136,9 +143,11 @@ function pioneersFor(targetRoom: string): number {
 export function runExpansionManager(): void {
   const mem = ensureMem();
   const base = pickBaseRoom();
+  const canScout = base ? scoutingUnlocked(base) : false;
+  const canExpand = base ? expansionUnlocked(base) : false;
 
-  // Dormant / gated off: keep state clean so nothing can wedge.
-  if (!base || !expansionUnlocked(base)) {
+  // Dormant / fully gated off: keep state clean so nothing can wedge.
+  if (!base || (!canScout && !canExpand)) {
     if (mem.state !== "idle") {
       mem.state = "idle";
       mem.targetRoom = undefined;
@@ -161,25 +170,37 @@ export function runExpansionManager(): void {
 
   switch (mem.state) {
     case "idle":
-      mem.state = "scouting";
+      if (canScout) mem.state = "scouting";
       break;
 
     case "scouting": {
       const adj = adjacentRooms(base.name);
       const haveAll = adj.every((r) => mem.intel[r] && Game.time - mem.intel[r].lastSeen < INTEL_TTL);
       if (haveAll) {
-        const target = pickTarget(base);
-        if (target) {
-          mem.targetRoom = target;
-          mem.state = "claiming";
+        if (canExpand) {
+          const target = pickTarget(base);
+          if (target) {
+            mem.targetRoom = target;
+            mem.state = "claiming";
+          } else {
+            mem.state = "idle"; // nothing worth claiming nearby; retry later
+          }
         } else {
-          mem.state = "idle"; // nothing worth claiming nearby; retry later
+          // Intel gathered but not yet eligible to claim; stay idle until the
+          // full expansion gate opens, then re-enter scouting with fresh intel.
+          mem.state = "idle";
         }
       }
       break;
     }
 
     case "claiming": {
+      if (!canExpand) {
+        // Gate closed mid-claim (e.g. storage destroyed); abort.
+        mem.state = "idle";
+        mem.targetRoom = undefined;
+        break;
+      }
       const room = mem.targetRoom ? Game.rooms[mem.targetRoom] : undefined;
       if (room && room.controller && room.controller.my) mem.state = "bootstrapping";
       break;

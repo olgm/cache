@@ -39,6 +39,7 @@ const ROLE_RUNNERS: Record<CreepRole, (creep: Creep) => void> = {
   scout: runScout,
   claimer: runClaimer,
   pioneer: runPioneer,
+  remoteHarvester: () => {}, // stub — not yet implemented
 };
 
 /** Bumped to trigger a one-time Memory migration on deploy. */

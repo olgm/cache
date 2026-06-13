@@ -37,15 +37,15 @@ export function runUpgrader(creep: Creep): void {
     return;
   }
 
-  // Waste prevention: when spawn+extensions are nearly full (>80%), pull from
-  // them directly so harvested energy doesn't pile up behind a capped buffer.
-  // This only fires when there's no controller container (the fast path above),
-  // and only when there's no storage to absorb the surplus.
+  // Waste prevention: when spawn+extensions are over half full (>60%), pull
+  // from them directly so harvested energy doesn't pile up behind a capped
+  // buffer.  This only fires when there's no controller container (the fast
+  // path above), and only when there's no storage to absorb the surplus.
   if (!data.storage) {
     const spawnExt = [...data.spawns, ...data.extensions];
     const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!, 0);
     const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-    if (totalCap > 0 && totalE > totalCap * 0.8) {
+    if (totalCap > 0 && totalE > totalCap * 0.6) {
       const src = spawnExt.find((s) => s.store[RESOURCE_ENERGY] > 0);
       if (src) {
         if (creep.withdraw(src, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, src);
