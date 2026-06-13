@@ -17,6 +17,7 @@
  */
 
 import { CacheStats } from "./types";
+import { getRoomData } from "./utils/roomData";
 
 /** Max energy a source yields per tick (its regen rate: 3000 energy / 300 ticks). */
 const SOURCE_MAX_PER_TICK = 10;
@@ -66,6 +67,9 @@ export function writeStats(): void {
     const ctrl = room.controller;
     // Only OWNED rooms count toward colony health; skip scouted/reserved rooms.
     if (!ctrl || !ctrl.my) continue;
+    // Reuse the per-tick cached room snapshot (a cache hit — the spawn manager
+    // already built it this tick), so the extra counts cost no extra find()s.
+    const data = getRoomData(room);
     rooms[name] = {
       rcl: ctrl.level,
       rclProgress: ctrl.progress || 0,
@@ -73,9 +77,13 @@ export function writeStats(): void {
       energy: room.energyAvailable,
       energyCapacity: room.energyCapacityAvailable,
       storage: room.storage ? room.storage.store[RESOURCE_ENERGY] : 0,
-      hostiles: room.find(FIND_HOSTILE_CREEPS).length,
+      hostiles: data.allHostiles.length,
       myCreeps: creepsByRoom[name] || 0,
-      income1k: roomIncome1k(room.find(FIND_SOURCES).length, harvestWorkByRoom[name] || 0),
+      income1k: roomIncome1k(data.sources.length, harvestWorkByRoom[name] || 0),
+      sites: data.constructionSites.length,
+      extensions: data.extensions.length,
+      containers: data.containers.length,
+      towers: data.towers.length,
     };
   }
 

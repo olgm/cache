@@ -129,6 +129,11 @@ export interface CacheStats {
       hostiles: number;
       myCreeps: number;
       income1k: number;
+      // Construction-progress signal (additive; SPARSE ignores unknown fields).
+      sites: number;
+      extensions: number;
+      containers: number;
+      towers: number;
     }
   >;
   creepsByRole: Record<string, number>;

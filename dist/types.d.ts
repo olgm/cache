@@ -99,6 +99,10 @@ export interface CacheStats {
         hostiles: number;
         myCreeps: number;
         income1k: number;
+        sites: number;
+        extensions: number;
+        containers: number;
+        towers: number;
     }>;
     creepsByRole: Record<string, number>;
     spawnQueues: number;
