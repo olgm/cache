@@ -6,7 +6,7 @@
  * room.  Scouts are cheap MOVE-only creeps designed to be disposable.
  */
 
-import { recordScoutIntel, recordScoutSources } from "../expansion";
+import { recordScoutIntel } from "../expansion";
 
 export function runScout(creep: Creep): void {
   let targetRoom = creep.memory.targetRoom;
@@ -24,13 +24,8 @@ export function runScout(creep: Creep): void {
     }
   }
 
-  // Record intel for the room we're in (including source positions)
+  // Record intel for the room we're in
   recordScoutIntel(creep.room.name);
-  recordScoutSources(creep.room.name, creep.room.find(FIND_SOURCES).map(s => ({
-    id: s.id,
-    x: s.pos.x,
-    y: s.pos.y,
-  })));
 
   // Move to target
   if (creep.room.name !== targetRoom) {

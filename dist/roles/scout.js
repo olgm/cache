@@ -24,13 +24,8 @@ function runScout(creep) {
             return;
         }
     }
-    // Record intel for the room we're in (including source positions)
+    // Record intel for the room we're in
     (0, expansion_1.recordScoutIntel)(creep.room.name);
-    (0, expansion_1.recordScoutSources)(creep.room.name, creep.room.find(FIND_SOURCES).map(s => ({
-        id: s.id,
-        x: s.pos.x,
-        y: s.pos.y,
-    })));
     // Move to target
     if (creep.room.name !== targetRoom) {
         const exitDir = creep.room.findExitTo(targetRoom);

@@ -36,16 +36,6 @@ export declare function onExpansionSpawn(role: CreepRole, creepName: string): vo
  */
 export declare function recordScoutIntel(roomName: string): void;
 /**
- * Record source positions during scouting so remote-mining can establish
- * ops based on intel even after the scout leaves (no current vision).
- * Called by the scout role when it enters a visible room.
- */
-export declare function recordScoutSources(roomName: string, sources: {
-    id: string;
-    x: number;
-    y: number;
-}[]): void;
-/**
  * Run expansion-related maintenance each tick.
  * Called from the main loop.
  */

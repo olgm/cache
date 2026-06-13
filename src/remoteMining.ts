@@ -1,5 +1,5 @@
 /**
- * Cache v0.1.0 — Remote-mining manager.
+ * Cache v0.2.0 — Remote-mining manager.
  *
  * Drives exploitation of sources in adjacent (non-owned) rooms:
  *   1. Evaluate adjacent rooms for viable remote sources (use expansion intel).
@@ -10,7 +10,13 @@
  *
  * State persisted in Memory.remoteMining.
  *
- * v0.1.2 — GCL gate lowered + energy-aware bodies + harvest tracking.
+ * v0.2.0 — Self-sufficient scouting:
+ *   - Caches source info (knownSources) whenever an adjacent room is visible,
+ *     so ops can start from cached data even when the room is dark.
+ *   - Dispatches a cheap 1-MOVE remoteScout when no intel exists and we
+ *     have spare op capacity, decoupling remote mining from expansion scouts.
+ *   - Uses knownSources in findBestRemoteSource as a fallback when the room
+ *     isn't currently visible.
  *
  * Design constraints:
  *   - Only adjacent rooms (range 1) for now — keeps pathing cheap.
@@ -28,8 +34,6 @@ import {
   RemoteSourceInfo,
   defaultRemoteMiningMemory,
   CreepRole,
-  ScoutedSourceInfo,
-  BODY_COST,
 } from "./types";
 import { getCensus } from "./utils/creepCensus";
 
@@ -69,25 +73,18 @@ const MAX_ROOM_RANGE = 1;
 
 /**
  * Body tiers for remote harvesters, keyed by energy capacity floor.
- * Every tier includes at least 1 CARRY so the harvester can hold energy
- * before dropping it for the hauler to pick up.
+ * Picked so the body cost fits in the room's energy capacity.
+ * Tiers (cost → body):
+ *   200+ → [WORK, MOVE]               (cheap, 150e)
+ *   300+ → [WORK, WORK, MOVE]          (250e)
+ *   450+ → [WORK, WORK, MOVE, MOVE]    (300e)
  *
- * Costs (WORK=100, CARRY=50, MOVE=50):
- *   200+ → [WORK, CARRY, MOVE]              (200e, 2e/tick mine, 50 cap)
- *   300+ → [WORK, WORK, CARRY, MOVE]         (300e, 4e/tick mine, 50 cap)
- *   400+ → [WORK, WORK, CARRY, MOVE, MOVE]   (350e, 4e/tick mine, 50 cap)
- *   550+ → [WORK, WORK, WORK, CARRY, MOVE, MOVE]  (450e, 6e/tick mine, 50 cap)
- *
- * NOTE: The 550+ tier caps at 450e (not 550e) deliberately — remote
- * harvesters drop energy for haulers so extra CARRY adds little value,
- * and keeping the body cheaper lets it spawn sooner when base roles
- * compete for energy.
+ * At very low levels we use 1 WORK — still better than nothing.
  */
 function selectRemoteHarvesterBody(energyCapacity: number): BodyPartConstant[] {
-  if (energyCapacity >= 550) return [WORK, WORK, WORK, CARRY, MOVE, MOVE];
-  if (energyCapacity >= 400) return [WORK, WORK, CARRY, MOVE, MOVE];
-  if (energyCapacity >= 300) return [WORK, WORK, CARRY, MOVE];
-  return [WORK, CARRY, MOVE]; // floor: 200e (works even with 300-cap spawns)
+  if (energyCapacity >= 450) return [WORK, WORK, MOVE, MOVE];
+  if (energyCapacity >= 300) return [WORK, WORK, MOVE];
+  return [WORK, MOVE]; // floor: 200e capacity (RCL 1 spawns are 300 so this is safe)
 }
 
 /**
@@ -129,31 +126,6 @@ function hasIntel(roomName: string): boolean {
     return Game.time - mem.scoutedRooms[roomName] < 1500;
   }
   return false;
-}
-
-/** Count living creeps of a given role. */
-function countRole(role: CreepRole): number {
-  let count = 0;
-  for (const name in Game.creeps) {
-    if (Game.creeps[name].memory.role === role) count++;
-  }
-  return count;
-}
-
-/**
- * Count living remote harvesters assigned to a specific source id.
- * Uses the pre-built creep census (single Game.creeps pass).
- */
-function countHarvestersForSource(sourceId: string): number {
-  return getCensus().harvestersBySource[sourceId] ?? 0;
-}
-
-/**
- * Count living remote haulers assigned to a specific remote room.
- * Uses the pre-built creep census (single Game.creeps pass).
- */
-function countHaulersForRoom(roomName: string): number {
-  return getCensus().haulersByRoom[roomName] ?? 0;
 }
 
 /**
@@ -227,10 +199,6 @@ function evaluateRemoteRoom(
 /**
  * Find the best source candidate across all owned rooms.
  * For each owned room, look at adjacent rooms with intel and score them.
- *
- * Two evaluation paths:
- *   1. Room is currently visible → full evaluateRemoteRoom (hostile/keeper checks).
- *   2. Room not visible but scouted → use Memory.expansion.scoutedSources.
  */
 function findBestRemoteSource(): {
   homeRoom: string;
@@ -252,57 +220,15 @@ function findBestRemoteSource(): {
       if (ops[adjName] && ops[adjName].state === "active") continue;
 
       const adjRoom = Game.rooms[adjName];
-      let sources: RemoteSourceInfo[] = [];
+      if (!adjRoom || !hasIntel(adjName)) continue;
 
-      if (adjRoom) {
-        // Path 1: room is currently visible — full evaluation with safety checks
-        sources = evaluateRemoteRoom(adjRoom, roomName);
-      } else if (hasIntel(adjName)) {
-        // Path 2: room not visible but we have scouted source data
-        const scoutedSrcs = Memory.expansion?.scoutedSources?.[adjName];
-        if (scoutedSrcs && scoutedSrcs.length > 0) {
-          // Use scouted positions; can't verify hostiles/keepers but that's
-          // acceptable — the remoteHarvester will flee if things go bad.
-          for (const ss of scoutedSrcs) {
-            sources.push({
-              id: ss.id,
-              x: ss.x,
-              y: ss.y,
-              roomName: adjName,
-              assignedHarvesters: MAX_HARVESTERS_PER_SOURCE,
-              assignedHaulers: MAX_HAULERS_PER_SOURCE,
-            });
-          }
-        } else {
-          // Fallback: we have intel (scout visited) but no per-source data
-          // recorded (e.g. old scout code before recordScoutSources was added).
-          // Assume 1 source at room centre — the remoteHarvester will locate
-          // it via Game.getObjectById when it arrives.  Mark it with a
-          // synthetic id so we can still establish the op.
-          console.log(
-            `RemoteMining: room ${adjName} has intel but no scouted sources — ` +
-            `using fallback (centre-of-room heuristic).`,
-          );
-          sources.push({
-            id: `fallback_${adjName}`,
-            x: 25,
-            y: 25,
-            roomName: adjName,
-            assignedHarvesters: MAX_HARVESTERS_PER_SOURCE,
-            assignedHaulers: MAX_HAULERS_PER_SOURCE,
-          });
-        }
-      }
-
+      const sources = evaluateRemoteRoom(adjRoom, roomName);
       for (const src of sources) {
         // Score: prefer rooms with more sources, closer to home
         let score = 100;
 
         // Bonus for each source in the room
         score += sources.length * 50;
-
-        // Slight penalty for non-visible rooms (can't verify safety)
-        if (!adjRoom) score -= 20;
 
         // Bonus for shorter distance (approximate with range)
         const dist = Game.map.getRoomLinearDistance(roomName, adjName);
@@ -368,6 +294,25 @@ export function runRemoteMiningManager(): void {
         // Withdraw from this remote — stop spawning, let creeps die
         op.state = "idle";
         console.log(`RemoteMining: withdrawing from ${op.roomName} (hostiles)`);
+        continue;
+      }
+
+      // Check productivity: if no energy hauled in 1500 ticks, the op is
+      // probably stuck (dead haulers, blocked path, etc.). Withdraw.
+      const idleThreshold = 1500;
+      if (
+        op.lastHaulTick !== undefined &&
+        op.lastHaulTick > 0 &&
+        Game.time - op.lastHaulTick > idleThreshold &&
+        op.totalHauled !== undefined &&
+        op.totalHauled > 0
+      ) {
+        // Was productive but went silent — likely path blocked or haulers died
+        op.state = "idle";
+        console.log(
+          `RemoteMining: withdrawing from ${op.roomName} ` +
+          `(unproductive for ${Game.time - op.lastHaulTick} ticks)`,
+        );
         continue;
       }
 
@@ -437,67 +382,39 @@ export function runRemoteMiningManager(): void {
  *
  * Checks each active remote op for missing harvesters/haulers.
  * Uses energy-aware body selection based on room capacity.
- *
- * v0.1.3 — Energy-aware ordering: prefers cheaper bodies (hauler first)
- * when energy is tight, avoiding the deadlock where an unaffordable
- * harvester body blocks a cheaper hauler from spawning.
  */
 export function getRemoteMiningSpawnRequest(): RemoteSpawnRequest | null {
   const mem = ensureMem();
-  const cap = effectiveEnergyCapacity();
-  const available = Math.max(
-    ...Object.values(Game.spawns).map((s) => s.room.energyAvailable),
-    0,
-  );
 
   for (const key in mem.ops) {
     const op = mem.ops[key];
     if (op.state !== "active") continue;
 
     for (const src of op.sources) {
-      const hCount = countHarvestersForSource(src.id);
-      const haulCount = countHaulersForRoom(op.roomName);
-
-      const harvBody = selectRemoteHarvesterBody(cap);
-      const haulerBody = selectRemoteHaulerBody(cap);
-      const harvCost = harvBody.reduce((s, p) => s + BODY_COST[p], 0);
-      const haulerCost = haulerBody.reduce((s, p) => s + BODY_COST[p], 0);
-
-      // Harvester MUST spawn before hauler — a hauler with no harvester
-      // producing energy in the remote room has nothing to collect and
-      // wastes its lifespan.  Only spawn a hauler when a harvester is
-      // already alive (or we can afford both right now, in which case
-      // the harvester goes first and hauler follows on a later tick).
-      const needHarv = hCount < src.assignedHarvesters;
-      const needHauler = haulCount < src.assignedHaulers;
-      const hasHarvester = hCount > 0;
-
-      // 1. Harvester first — always
-      if (needHarv && available >= harvCost) {
+      // Check for missing harvesters (via census)
+      const hCount = getCensus().harvestersBySource[src.id] ?? 0;
+      if (hCount < src.assignedHarvesters) {
+        const cap = effectiveEnergyCapacity();
         return {
           role: "remoteHarvester",
-          body: harvBody,
+          body: selectRemoteHarvesterBody(cap),
           priority: 3,
           targetId: src.id,
-          homeRoom: op.homeRoom,
         };
       }
 
-      // 2. Hauler only when a harvester already exists to supply it
-      if (needHauler && hasHarvester && available >= haulerCost) {
+      // Check for missing haulers (via census)
+      const haulCount = getCensus().haulersByRoom[op.roomName] ?? 0;
+      if (haulCount < src.assignedHaulers) {
+        const cap = effectiveEnergyCapacity();
         return {
           role: "remoteHauler",
-          body: haulerBody,
+          body: selectRemoteHaulerBody(cap),
           priority: 4,
           targetId: op.roomName,
           homeRoom: op.homeRoom,
         };
       }
-
-      // 3. If harvester is unaffordable but hauler is possible AND we
-      //    already have a harvester, still spawn the hauler (handles edge
-      //    case where energy dipped between checks).
-      //    (This is already covered by case 2 above.)
     }
   }
 
@@ -519,7 +436,6 @@ export function onRemoteMiningSpawn(
 
   if (role === "remoteHarvester" && targetId) {
     creep.memory.sourceId = targetId as Id<Source>;
-    creep.memory.homeRoom = homeRoom;
     // Also store the room name so the harvester knows where to go
     const src = Game.getObjectById(targetId as Id<Source>);
     if (src) {

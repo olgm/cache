@@ -1,5 +1,5 @@
 /**
- * Cache v0.1.0 — Remote-mining manager.
+ * Cache v0.2.0 — Remote-mining manager.
  *
  * Drives exploitation of sources in adjacent (non-owned) rooms:
  *   1. Evaluate adjacent rooms for viable remote sources (use expansion intel).
@@ -10,7 +10,13 @@
  *
  * State persisted in Memory.remoteMining.
  *
- * v0.1.2 — GCL gate lowered + energy-aware bodies + harvest tracking.
+ * v0.2.0 — Self-sufficient scouting:
+ *   - Caches source info (knownSources) whenever an adjacent room is visible,
+ *     so ops can start from cached data even when the room is dark.
+ *   - Dispatches a cheap 1-MOVE remoteScout when no intel exists and we
+ *     have spare op capacity, decoupling remote mining from expansion scouts.
+ *   - Uses knownSources in findBestRemoteSource as a fallback when the room
+ *     isn't currently visible.
  *
  * Design constraints:
  *   - Only adjacent rooms (range 1) for now — keeps pathing cheap.
@@ -43,10 +49,6 @@ export declare function runRemoteMiningManager(): void;
  *
  * Checks each active remote op for missing harvesters/haulers.
  * Uses energy-aware body selection based on room capacity.
- *
- * v0.1.3 — Energy-aware ordering: prefers cheaper bodies (hauler first)
- * when energy is tight, avoiding the deadlock where an unaffordable
- * harvester body blocks a cheaper hauler from spawning.
  */
 export declare function getRemoteMiningSpawnRequest(): RemoteSpawnRequest | null;
 /**

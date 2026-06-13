@@ -10,7 +10,7 @@ export interface RoomStats {
     };
     rooms: Record<string, unknown>;
 }
-export type CreepRole = "harvester" | "builder" | "upgrader" | "claimer" | "scout" | "remoteHarvester" | "remoteHauler";
+export type CreepRole = "harvester" | "builder" | "upgrader" | "claimer" | "scout" | "remoteScout" | "remoteHarvester" | "remoteHauler";
 declare global {
     interface CreepMemory {
         role?: CreepRole;
@@ -26,20 +26,12 @@ declare global {
     }
 }
 export type ExpansionState = "idle" | "scouting" | "claiming" | "bootstrapping";
-/** Per-source info recorded during scouting for remote-mining use. */
-export interface ScoutedSourceInfo {
-    id: string;
-    x: number;
-    y: number;
-}
 export interface ExpansionMemory {
     state: ExpansionState;
     targetRoom?: string;
     scoutDispatched: boolean;
     claimerSpawned: boolean;
     scoutedRooms: Record<string, number>;
-    /** Source positions recorded during scouting (for remote-mining). */
-    scoutedSources: Record<string, ScoutedSourceInfo[]>;
 }
 export declare function defaultExpansionMemory(): ExpansionMemory;
 export type RemoteMiningState = "idle" | "active";
@@ -64,6 +56,11 @@ export interface RemoteOp {
 }
 export interface RemoteMiningMemory {
     ops: Record<string, RemoteOp>;
+    /** Cached source info from adjacent rooms, populated when visible.
+     *  Persists across ticks so ops can start even when the room is dark. */
+    knownSources: Record<string, RemoteSourceInfo[]>;
+    /** Tick when the last remote scout was dispatched. */
+    lastScoutTick: number;
 }
 export declare function defaultRemoteMiningMemory(): RemoteMiningMemory;
 export declare const BODY_COST: Record<BodyPartConstant, number>;
