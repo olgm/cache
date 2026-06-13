@@ -47,7 +47,9 @@ export function writeStats(): void {
     const role = (c.memory.role as string) || "unknown";
     creepsByRole[role] = (creepsByRole[role] || 0) + 1;
     creepsByRoom[c.room.name] = (creepsByRoom[c.room.name] || 0) + 1;
-    if (role === "harvester" || role === "remoteHarvester") {
+    // Energy producers: dedicated miners and generalist harvesters. Their WORK
+    // parts (capped at the source regen rate) are the room's mining capacity.
+    if (role === "miner" || role === "harvester") {
       harvestWorkByRoom[c.room.name] =
         (harvestWorkByRoom[c.room.name] || 0) + c.getActiveBodyparts(WORK);
     }

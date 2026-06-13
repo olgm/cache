@@ -1,0 +1,220 @@
+/**
+ * Cache — economy tunables: dynamic body builders + RCL-scaled role targets.
+ *
+ * Bodies scale with `energyCapacityAvailable` (so creeps grow as the room builds
+ * extensions), and target counts scale with RCL, source/container count, storage
+ * energy and construction load. This is the single biggest lever for climbing
+ * out of the "5 tiny creeps forever" trap the old hardcoded plan was stuck in.
+ */
+
+import { BODY_COST, CreepRole } from "./types";
+import { RoomData } from "./utils/roomData";
+
+/** Hard limit: a creep may have at most 50 body parts. */
+const MAX_PARTS = 50;
+
+function unitCost(unit: BodyPartConstant[]): number {
+  let c = 0;
+  for (const p of unit) c += BODY_COST[p];
+  return c;
+}
+
+/**
+ * Repeat a unit pattern as many times as `budget` energy and `maxRepeat` allow,
+ * never exceeding 50 parts. Always returns at least one unit (callers guarantee
+ * affordability, or accept an undersized emergency creep).
+ */
+function repeat(unit: BodyPartConstant[], budget: number, maxRepeat: number): BodyPartConstant[] {
+  const cost = unitCost(unit);
+  let n = Math.floor(budget / cost);
+  if (n > maxRepeat) n = maxRepeat;
+  while (n * unit.length > MAX_PARTS) n--;
+  if (n < 1) n = 1;
+  const body: BodyPartConstant[] = [];
+  for (let i = 0; i < n; i++) body.push(...unit);
+  return body;
+}
+
+// ---------------------------------------------------------------------------
+// Per-role body builders (all driven by an energy budget)
+// ---------------------------------------------------------------------------
+
+/**
+ * Stationary container miner: maximise WORK (up to 5 — a full source drain at
+ * 10 energy/tick) plus one CARRY (to fill its container) and proportional MOVE.
+ */
+export function minerBody(budget: number): BodyPartConstant[] {
+  for (let w = 5; w >= 1; w--) {
+    const m = Math.min(3, Math.max(1, Math.ceil(w / 2)));
+    const cost = w * BODY_COST.work + BODY_COST.carry + m * BODY_COST.move;
+    if (cost <= budget) {
+      const body: BodyPartConstant[] = [];
+      for (let i = 0; i < w; i++) body.push(WORK);
+      body.push(CARRY);
+      for (let i = 0; i < m; i++) body.push(MOVE);
+      return body;
+    }
+  }
+  return [WORK, CARRY, MOVE];
+}
+
+/** Hauler: CARRY/MOVE at a 2:1 ratio (assumes roads; half-speed when loaded off-road). */
+export function haulerBody(budget: number): BodyPartConstant[] {
+  return repeat([CARRY, CARRY, MOVE], budget, 8); // up to 16 CARRY = 800 capacity
+}
+
+/** Generalist worker (harvester bootstrap / builder): balanced WORK/CARRY/MOVE. */
+export function workerBody(budget: number, maxRepeat: number): BodyPartConstant[] {
+  return repeat([WORK, CARRY, MOVE], budget, maxRepeat);
+}
+
+/**
+ * Upgrader: WORK-heavy with enough CARRY to buffer. Capped at 15 WORK because a
+ * controller accepts at most 15 energy/tick of upgrade once at RCL8 (and big
+ * upgraders are wasteful past that); below RCL8 more WORK is always useful.
+ */
+export function upgraderBody(budget: number, rcl: number): BodyPartConstant[] {
+  // unit [WORK,WORK,CARRY,MOVE] = 2 WORK / 300e; cap repeats so WORK<=~15.
+  const maxByCap = rcl >= 8 ? 4 : 8; // RCL8: ~8 WORK is plenty for the 15/tick cap
+  return repeat([WORK, WORK, CARRY, MOVE], budget, maxByCap);
+}
+
+/** Melee defender: ATTACK with 1:1 MOVE so it stays mobile while fighting. */
+export function defenderBody(budget: number): BodyPartConstant[] {
+  return repeat([ATTACK, MOVE], budget, 10);
+}
+
+/** Scout: a single MOVE — disposable intel gatherer. */
+export function scoutBody(): BodyPartConstant[] {
+  return [MOVE];
+}
+
+/** Claimer: one CLAIM + MOVE (600+50 = 650e; needs RCL2+ capacity). */
+export function claimerBody(budget: number): BodyPartConstant[] {
+  if (budget >= 1300) return [CLAIM, CLAIM, MOVE, MOVE];
+  return [CLAIM, MOVE];
+}
+
+/** Pioneer: a big mobile generalist that bootstraps a freshly-claimed room. */
+export function pioneerBody(budget: number): BodyPartConstant[] {
+  return repeat([WORK, CARRY, MOVE], Math.min(budget, 1500), 6);
+}
+
+// ---------------------------------------------------------------------------
+// Role target counts (desired population per owned room)
+// ---------------------------------------------------------------------------
+
+export type RoleTargets = Partial<Record<CreepRole, number>>;
+
+/**
+ * Compute the desired creep population for a room from its current state.
+ * Expansion roles (scout/claimer/pioneer) are NOT included here — the expansion
+ * manager requests those separately. `current` is the room's live role counts,
+ * used to keep an invariant the desired-state alone can't express.
+ */
+export function roleTargets(data: RoomData, current: Record<string, number>): RoleTargets {
+  const { rcl, sources, storage, constructionSites, hostiles, towers } = data;
+  const sourceCount = sources.length;
+  const withContainer = sources.filter((s) => s.container).length;
+  const totalOpenSlots = sources.reduce((sum, s) => sum + s.openSlots, 0);
+  const liveHaulers = current.hauler || 0;
+
+  const targets: RoleTargets = {};
+
+  // --- Mining: dedicated miners on container-equipped sources ---
+  targets.miner = withContainer;
+
+  // --- Generalist harvesters: cover sources that have no container yet, and
+  //     carry the whole economy during the RCL1-2 bootstrap before containers
+  //     exist. Capped by the open tiles around the uncovered sources. ---
+  const uncovered = sourceCount - withContainer;
+  if (withContainer === 0) {
+    // Pure bootstrap: 2-3 generalists per source, bounded by mining slots.
+    targets.harvester = Math.min(sourceCount * 3, totalOpenSlots, 6);
+  } else if (uncovered > 0) {
+    targets.harvester = Math.min(uncovered * 2, totalOpenSlots);
+  } else {
+    // Fully container-mined: miners + haulers run the economy, so generalists
+    // are not needed — EXCEPT we always keep one alive until a hauler exists.
+    // A harvester is the only OTHER creep that refills the spawn; without this
+    // floor, a simultaneous hauler die-off with a low spawn would deadlock
+    // (no filler can be afforded from an empty spawn). This floor guarantees a
+    // self-sufficient spawn-filler is always present through the transition.
+    targets.harvester = liveHaulers > 0 ? 0 : 1;
+  }
+
+  // --- Haulers: move energy from source containers to sinks. ---
+  if (withContainer > 0) {
+    let haulers = Math.max(withContainer, rcl >= 3 ? 2 : 1);
+    if (storage) haulers += 1;
+    targets.hauler = Math.min(haulers, sourceCount * 2 + 1);
+  } else {
+    targets.hauler = 0;
+  }
+
+  // --- Upgraders: 1 baseline, scaled up by surplus (storage) energy. ---
+  if (rcl >= 8) {
+    targets.upgrader = 1; // controller capped at 15/tick — one fat upgrader suffices
+  } else if (storage) {
+    const e = storage.store[RESOURCE_ENERGY];
+    targets.upgrader = Math.min(4, 1 + Math.floor(e / 20000));
+  } else {
+    targets.upgrader = withContainer > 0 ? 2 : 1;
+  }
+
+  // --- Builders: scale with construction load. ---
+  const sites = constructionSites.length;
+  if (sites > 0) {
+    targets.builder = Math.min(Math.max(1, Math.ceil(sites / 5)), rcl >= 4 ? 3 : 2);
+  } else {
+    targets.builder = 0;
+  }
+
+  // --- Defenders: only when threatened AND towers can't cover it. ---
+  if (hostiles.length > 0 && towers.length === 0) {
+    targets.defender = Math.min(hostiles.length, 3);
+  } else {
+    targets.defender = 0;
+  }
+
+  return targets;
+}
+
+/** Build the body for an economy role given the room's spawn-energy budget. */
+export function bodyForRole(role: CreepRole, budget: number, rcl: number): BodyPartConstant[] {
+  switch (role) {
+    case "miner":
+      return minerBody(budget);
+    case "hauler":
+      return haulerBody(budget);
+    case "harvester":
+      return workerBody(budget, 5);
+    case "builder":
+      return workerBody(budget, 5);
+    case "upgrader":
+      return upgraderBody(budget, rcl);
+    case "defender":
+      return defenderBody(budget);
+    case "scout":
+      return scoutBody();
+    case "claimer":
+      return claimerBody(budget);
+    case "pioneer":
+      return pioneerBody(budget);
+    default:
+      return [WORK, CARRY, MOVE];
+  }
+}
+
+/** Spawn priority — lower spawns first. */
+export const ROLE_PRIORITY: Record<CreepRole, number> = {
+  harvester: 0, // economy lifeblood (bootstrap)
+  miner: 1,
+  hauler: 2,
+  defender: 2, // urgent when present
+  upgrader: 4,
+  builder: 5,
+  pioneer: 6,
+  claimer: 7,
+  scout: 8,
+};

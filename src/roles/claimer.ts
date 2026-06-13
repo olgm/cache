@@ -1,92 +1,43 @@
 /**
- * Cache v0.0.3 — Claimer role.
+ * Cache — Claimer role.
  *
- * Moves to the target room (stored in creep.memory.targetRoom) and claims
- * the controller.  Once the claim succeeds the creep flags itself as done
- * (creep.memory.claimed = true) and the expansion manager can move on.
- *
- * After claiming the creep switches to upgrading the new controller to
- * kick-start GCL progress in the new room.
+ * Travels to its target room and claims the controller, then helps upgrade it
+ * (signalling presence and starting RCL progress) until it expires. The
+ * expansion gate guarantees GCL headroom before a claimer is ever spawned, so a
+ * claim should always succeed.
  */
 
-import { recordScoutIntel } from "../expansion";
+import { travel, travelToRoom } from "../utils/movement";
+import { recordIntel } from "../expansion";
 
 export function runClaimer(creep: Creep): void {
-  // If we already claimed, help upgrade the new room's controller.
-  if (creep.memory.claimed) {
-    const ctrl = creep.room.controller;
-    if (ctrl && ctrl.my) {
-      if (creep.upgradeController(ctrl) === ERR_NOT_IN_RANGE) {
-        creep.moveTo(ctrl);
-      }
-    } else {
-      // Try to move back towards a spawn room (simple: head to any owned room)
-      returnToSpawn(creep);
-    }
+  const target = creep.memory.targetRoom;
+  if (!target) return; // no target — let it expire harmlessly
+
+  recordIntel(creep.room);
+
+  if (creep.room.name !== target) {
+    travelToRoom(creep, target);
     return;
   }
-
-  const targetRoom = creep.memory.targetRoom;
-  if (!targetRoom) {
-    // No target — suicide or idle
-    console.log(`Claimer ${creep.name} has no target room.`);
-    return;
-  }
-
-  // Move to target room
-  if (creep.room.name !== targetRoom) {
-    // Record intel as we travel
-    recordScoutIntel(creep.room.name);
-
-    const exitDir = creep.room.findExitTo(targetRoom);
-    if (exitDir !== ERR_NO_PATH && exitDir !== ERR_INVALID_ARGS) {
-      const exitPos = creep.pos.findClosestByRange(exitDir);
-      if (exitPos) creep.moveTo(exitPos);
-    }
-    return;
-  }
-
-  // We are in the target room — record intel
-  recordScoutIntel(creep.room.name);
 
   const ctrl = creep.room.controller;
-  if (!ctrl) {
-    console.log(`Claimer ${creep.name}: no controller in ${targetRoom}.`);
-    creep.memory.claimed = true;
-    return;
-  }
+  if (!ctrl) return;
 
-  // If already ours, we're done claiming
   if (ctrl.my) {
     creep.memory.claimed = true;
+    if (creep.upgradeController(ctrl) === ERR_NOT_IN_RANGE) travel(creep, ctrl, 3);
     return;
   }
 
-  // Claim it
-  const result = creep.claimController(ctrl);
-  if (result === ERR_NOT_IN_RANGE) {
-    creep.moveTo(ctrl);
-  } else if (result === OK) {
+  const res = creep.claimController(ctrl);
+  if (res === ERR_NOT_IN_RANGE) {
+    travel(creep, ctrl);
+  } else if (res === OK) {
     creep.memory.claimed = true;
-    creep.say("claimed!");
-  } else if (result === ERR_GCL_NOT_ENOUGH) {
-    // We can't claim yet — wait and upgrade instead to signal presence
-    if (creep.upgradeController(ctrl) === ERR_NOT_IN_RANGE) {
-      creep.moveTo(ctrl);
-    }
-  }
-}
-
-/** Naively move back towards any spawn room. */
-function returnToSpawn(creep: Creep): void {
-  for (const name in Game.spawns) {
-    const spawn = Game.spawns[name];
-    if (creep.room.name === spawn.room.name) return; // already there
-    const exitDir = creep.room.findExitTo(spawn.room.name);
-    if (exitDir !== ERR_NO_PATH && exitDir !== ERR_INVALID_ARGS) {
-      const exitPos = creep.pos.findClosestByRange(exitDir);
-      if (exitPos) creep.moveTo(exitPos);
-      return;
-    }
+    creep.say("claimed");
+  } else if (res === ERR_GCL_NOT_ENOUGH) {
+    // Shouldn't happen behind the gate; reserve to hold the room meanwhile.
+    if (creep.reserveController(ctrl) === ERR_NOT_IN_RANGE) travel(creep, ctrl);
   }
 }

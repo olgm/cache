@@ -1,80 +1,72 @@
 /**
- * Cache v0.0.4 — Shared types, constants, and interfaces.
+ * Cache v0.3.0 — Shared types, constants, and interfaces.
+ *
+ * This release is a fundamentals rewrite: a static-mining economy (dedicated
+ * container miners + haulers), RCL-scaled creep counts and body sizes, an
+ * auto-construction planner, tower defense, and a gated multi-room expansion.
+ * The legacy remote-mining subsystem was removed (premature for an early
+ * single-room colony — re-introduce at RCL4+).
  */
-export interface RoomStats {
-    gcl: number;
-    cpu: {
-        used: number;
-        limit: number;
-        bucket: number;
-    };
-    rooms: Record<string, unknown>;
-}
-export type CreepRole = "harvester" | "builder" | "upgrader" | "claimer" | "scout" | "remoteScout" | "remoteHarvester" | "remoteHauler";
+export type CreepRole = "harvester" | "miner" | "hauler" | "upgrader" | "builder" | "defender" | "scout" | "claimer" | "pioneer";
 declare global {
     interface CreepMemory {
-        role?: CreepRole;
-        targetRoom?: string;
-        claimed?: boolean;
-        sourceId?: Id<Source>;
+        role: CreepRole;
+        /** Room this creep belongs to and operates in (falls back to current room). */
         homeRoom?: string;
+        /** Miner: the source it is assigned to. */
+        sourceId?: Id<Source>;
+        /** Scout/claimer/pioneer: the room to travel to. */
+        targetRoom?: string;
+        /** Builder/upgrader/harvester: true = spending energy, false = gathering. */
+        working?: boolean;
+        /** Hauler: true = delivering, false = collecting. */
         hauling?: boolean;
+        /** Claimer: set once the target controller is claimed. */
+        claimed?: boolean;
+        /** True if this creep was spawned in emergency-bootstrap mode (undersized). */
+        bootstrap?: boolean;
+    }
+    interface RoomMemory {
+        /** Base-layout anchor — the first spawn's position. Structures stamp around it. */
+        anchor?: {
+            x: number;
+            y: number;
+        };
+        /** Tick the construction planner last ran a full pass (throttling). */
+        lastPlan?: number;
+        /** Tick roads were last planned (re-pathing is expensive; throttle hard). */
+        lastRoadPlan?: number;
+        /** Map of sourceId → container id beside it (cached so dark/odd ticks are cheap). */
+        sourceContainers?: Record<string, Id<StructureContainer>>;
     }
     interface Memory {
         expansion?: ExpansionMemory;
-        remoteMining?: RemoteMiningMemory;
         stats?: CacheStats;
+        /** Schema version, bumped to trigger one-time migrations in main.ts. */
+        version?: number;
     }
 }
 export type ExpansionState = "idle" | "scouting" | "claiming" | "bootstrapping";
+export interface RoomIntel {
+    sources: number;
+    /** Controller owner username, if any. */
+    owner?: string;
+    /** Reserved by another player. */
+    reserved?: boolean;
+    /** Hostiles or source-keeper lairs present. */
+    hostile?: boolean;
+    lastSeen: number;
+}
 export interface ExpansionMemory {
     state: ExpansionState;
     targetRoom?: string;
-    scoutDispatched: boolean;
-    claimerSpawned: boolean;
+    /** roomName → last-scouted tick. */
     scoutedRooms: Record<string, number>;
+    /** roomName → cached intel for target selection. */
+    intel: Record<string, RoomIntel>;
 }
 export declare function defaultExpansionMemory(): ExpansionMemory;
-export type RemoteMiningState = "idle" | "active";
-export interface RemoteSourceInfo {
-    id: string;
-    x: number;
-    y: number;
-    roomName: string;
-    assignedHarvesters: number;
-    assignedHaulers: number;
-}
-export interface RemoteOp {
-    roomName: string;
-    state: RemoteMiningState;
-    homeRoom: string;
-    sources: RemoteSourceInfo[];
-    lastEval: number;
-    /** Cumulative energy hauled from this remote op (reset on deactivation). */
-    totalHauled: number;
-    /** Tick when energy was last hauled from this op. */
-    lastHaulTick: number;
-}
-export interface RemoteMiningMemory {
-    ops: Record<string, RemoteOp>;
-    /** Cached source info from adjacent rooms, populated when visible.
-     *  Persists across ticks so ops can start even when the room is dark. */
-    knownSources: Record<string, RemoteSourceInfo[]>;
-    /** Tick when the last remote scout was dispatched. */
-    lastScoutTick: number;
-}
-export declare function defaultRemoteMiningMemory(): RemoteMiningMemory;
 export declare const BODY_COST: Record<BodyPartConstant, number>;
-export interface SpawnRequest {
-    role: CreepRole;
-    body: BodyPartConstant[];
-    priority: number;
-}
-export declare const TIER1_BODIES: Record<string, BodyPartConstant[]>;
-export declare const EXPANSION_BODIES: Record<string, BodyPartConstant[]>;
-export declare const REMOTE_BODIES: Record<string, BodyPartConstant[]>;
-export declare const TARGET_COUNTS: Record<string, number>;
-export declare const ROLE_PRIORITY: Record<string, number>;
 export interface CacheStats {
     /** Game tick this snapshot was written at (SPARSE's freshness signal). */
     tick: number;

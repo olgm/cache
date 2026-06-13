@@ -1,89 +1,44 @@
 "use strict";
 /**
- * Cache v0.0.3 — Scout role.
+ * Cache — Scout role.
  *
- * Travels to the target room (creep.memory.targetRoom), records intel via
- * the expansion manager, and returns or scouts the next unknown adjacent
- * room.  Scouts are cheap MOVE-only creeps designed to be disposable.
+ * A disposable 1-MOVE creep that maps the rooms adjacent to its home, recording
+ * intel the expansion manager uses to pick a claim target. When every neighbour
+ * has fresh intel it idles at home (cheap) until the intel goes stale, then
+ * resumes — so we don't respawn scouts needlessly.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runScout = runScout;
+const movement_1 = require("../utils/movement");
 const expansion_1 = require("../expansion");
+const INTEL_FRESH = 5000;
 function runScout(creep) {
-    let targetRoom = creep.memory.targetRoom;
-    if (!targetRoom) {
-        // No target — pick an unexplored adjacent room from our spawns.
-        const next = findUnexploredAdjacent(creep);
-        if (next) {
-            creep.memory.targetRoom = next;
-            targetRoom = next;
-        }
-        else {
-            // Nothing to scout — suicide to free up CPU
-            creep.suicide();
-            return;
-        }
-    }
-    // Record intel for the room we're in
-    (0, expansion_1.recordScoutIntel)(creep.room.name);
-    // Move to target
-    if (creep.room.name !== targetRoom) {
-        const exitDir = creep.room.findExitTo(targetRoom);
-        if (exitDir !== ERR_NO_PATH && exitDir !== ERR_INVALID_ARGS) {
-            const exitPos = creep.pos.findClosestByRange(exitDir);
-            if (exitPos)
-                creep.moveTo(exitPos);
-        }
+    (0, expansion_1.recordIntel)(creep.room);
+    const home = creep.memory.homeRoom || creep.room.name;
+    const target = nextTarget(home);
+    if (!target) {
+        // All mapped — wait at home.
+        if (creep.room.name !== home)
+            (0, movement_1.travelToRoom)(creep, home);
+        else if (creep.room.controller)
+            (0, movement_1.travel)(creep, creep.room.controller, 3);
         return;
     }
-    // We arrived — record intel
-    (0, expansion_1.recordScoutIntel)(targetRoom);
-    // Pick next unexplored adjacent room
-    creep.memory.targetRoom = undefined;
-    targetRoom = undefined;
-    const next = findUnexploredAdjacent(creep);
-    if (next) {
-        creep.memory.targetRoom = next;
-        targetRoom = next;
-    }
-    else {
-        // All adjacent rooms explored — head home
-        returnToSpawn(creep);
-    }
+    if (creep.room.name !== target)
+        (0, movement_1.travelToRoom)(creep, target);
 }
-/** Find an adjacent room we haven't scouted yet from the creep's current room. */
-function findUnexploredAdjacent(creep) {
-    var _a;
-    const mem = Memory.expansion;
-    const scouted = (_a = mem === null || mem === void 0 ? void 0 : mem.scoutedRooms) !== null && _a !== void 0 ? _a : {};
-    const exits = Game.map.describeExits(creep.room.name);
+/** First adjacent-to-home room lacking fresh intel. */
+function nextTarget(home) {
+    var _a, _b;
+    const exits = Game.map.describeExits(home);
     if (!exits)
         return null;
-    for (const roomName of Object.values(exits)) {
-        if (!scouted[roomName] || Game.time - scouted[roomName] > 1500) {
-            return roomName;
-        }
+    const intel = (_b = (_a = Memory.expansion) === null || _a === void 0 ? void 0 : _a.intel) !== null && _b !== void 0 ? _b : {};
+    for (const name of Object.values(exits)) {
+        const i = intel[name];
+        if (!i || Game.time - i.lastSeen > INTEL_FRESH)
+            return name;
     }
     return null;
-}
-/** Move back towards a spawn room. */
-function returnToSpawn(creep) {
-    for (const name in Game.spawns) {
-        const spawn = Game.spawns[name];
-        if (creep.room.name === spawn.room.name) {
-            // Reached home — suicide to free up CPU
-            creep.suicide();
-            return;
-        }
-        const exitDir = creep.room.findExitTo(spawn.room.name);
-        if (exitDir !== ERR_NO_PATH && exitDir !== ERR_INVALID_ARGS) {
-            const exitPos = creep.pos.findClosestByRange(exitDir);
-            if (exitPos)
-                creep.moveTo(exitPos);
-            return;
-        }
-    }
-    // No path? Just suicide.
-    creep.suicide();
 }
 //# sourceMappingURL=scout.js.map

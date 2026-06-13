@@ -1,42 +1,28 @@
 /**
- * Cache v0.0.5 — Expansion manager.
+ * Cache — Expansion manager (gated, correct).
  *
- * Drives multi-room expansion:
- *   1. Scout adjacent rooms (even while GCL-locked) to gather intel.
- *   2. When GCL allows a new room, pick the best scouted target.
- *   3. Spawn a claimer to capture the target controller.
- *   4. After claiming, hand off to the normal spawn pipeline for bootstrapping.
+ * Drives a SECOND room only once the home colony can clearly afford it. The
+ * old version wedged itself (claiming an unreachable room at GCL1, claimer never
+ * able to claim); this one is hard-gated and self-validating:
  *
- * State machine persisted in Memory.expansion.
+ *   gate: ownedRooms < GCL (the real claim limit) AND a mature base
+ *         (RCL >= 4 with a storage = genuine energy surplus).
  *
- * v0.0.5 CPU optimisations:
- *   - ownedRoomCount cached per tick (called multiple times).
- *   - hasActiveClaimer / hasActiveScout via creep census (no extra iteration).
- *   - Expensive room scoring throttled to every 20 ticks.
- *   - pickTarget uses cached room structures instead of repeated find().
+ * Flow: idle → scouting (a scout maps adjacent rooms) → claiming (a claimer
+ * takes the best adjacent controller) → bootstrapping (pioneers build the new
+ * room's first spawn; the construction planner places the spawn site) → idle.
+ *
+ * At GCL1 / RCL3 (the current live colony) the gate is closed, so this stays
+ * dormant and can never wedge — the corrupt legacy state is reset on migration.
  */
 import { CreepRole } from "./types";
-/**
- * Return a spawn request the expansion module wants fulfilled this tick,
- * or null if no expansion spawn is needed.
- */
-export interface ExpansionSpawnRequest {
+import { RoomData } from "./utils/roomData";
+export interface SpawnRequest {
     role: CreepRole;
     body: BodyPartConstant[];
-    priority: number;
+    memory: CreepMemory;
 }
-export declare function getExpansionSpawnRequest(): ExpansionSpawnRequest | null;
-/**
- * Attach target room to a newly spawned claimer or scout.
- * Called by the spawn manager after a successful spawn.
- */
-export declare function onExpansionSpawn(role: CreepRole, creepName: string): void;
-/**
- * Record scout intel. Called by the scout role when it enters a room.
- */
-export declare function recordScoutIntel(roomName: string): void;
-/**
- * Run expansion-related maintenance each tick.
- * Called from the main loop.
- */
+/** Record intel about a visible room (called by scouts/claimers and the manager). */
+export declare function recordIntel(room: Room): void;
 export declare function runExpansionManager(): void;
+export declare function getExpansionSpawnRequest(room: Room, data: RoomData): SpawnRequest | null;

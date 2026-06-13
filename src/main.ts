@@ -1,96 +1,96 @@
 /**
- * Cache v0.0.5 — Main loop.
+ * Cache v0.3.0 — Main loop.
  *
- * Called every tick by the Screeps runtime. Orchestrates:
- *   1. Cache & census flush
- *   2. Expansion & remote-mining maintenance
- *   3. Spawn management (includes expansion/remote requests)
- *   4. Creep role dispatch
+ * Called every tick by the Screeps runtime. Order of operations:
+ *   1. Memory hygiene (prune dead creeps; one-time schema migration).
+ *   2. Managers: expansion → construction → towers → spawning.
+ *   3. Creep role dispatch.
+ *   4. Telemetry (Memory.stats) LAST, so SPARSE observes this tick's real state.
  *
- * Catches all errors to prevent a single failure from crashing the tick.
+ * Every subsystem and every creep is wrapped in try/catch that LOGS to the
+ * console (it never swallows silently) — SPARSE diagnoses partly off console
+ * errors, so a crashing subsystem must be visible, not invisible.
  */
 
-import { flushCache } from "./utils/cache";
-import { flushCensus, ensureCensus } from "./utils/creepCensus";
-import { runSpawnManager } from "./spawnManager";
+import { runSpawnManager } from "./kernel/spawning";
+import { runConstruction } from "./kernel/construction";
+import { runTowers } from "./kernel/towers";
 import { runExpansionManager } from "./expansion";
-import { runRemoteMiningManager } from "./remoteMining";
-import { runHarvester } from "./roles/harvester";
-import { runBuilder } from "./roles/builder";
-import { runUpgrader } from "./roles/upgrader";
-import { runClaimer } from "./roles/claimer";
-import { runScout } from "./roles/scout";
-import { runRemoteHarvester } from "./roles/remoteHarvester";
-import { runRemoteHauler } from "./roles/remoteHauler";
-import { CreepRole } from "./types";
 import { writeStats } from "./stats";
+import { CreepRole } from "./types";
 
-/** Map role identifiers to their runner function. */
-const ROLE_RUNNERS: Partial<Record<CreepRole, (creep: Creep) => void>> = {
+import { runMiner } from "./roles/miner";
+import { runHauler } from "./roles/hauler";
+import { runHarvester } from "./roles/harvester";
+import { runUpgrader } from "./roles/upgrader";
+import { runBuilder } from "./roles/builder";
+import { runDefender } from "./roles/defender";
+import { runScout } from "./roles/scout";
+import { runClaimer } from "./roles/claimer";
+import { runPioneer } from "./roles/pioneer";
+
+const ROLE_RUNNERS: Record<CreepRole, (creep: Creep) => void> = {
+  miner: runMiner,
+  hauler: runHauler,
   harvester: runHarvester,
-  builder: runBuilder,
   upgrader: runUpgrader,
-  claimer: runClaimer,
+  builder: runBuilder,
+  defender: runDefender,
   scout: runScout,
-  remoteHarvester: runRemoteHarvester,
-  remoteHauler: runRemoteHauler,
+  claimer: runClaimer,
+  pioneer: runPioneer,
 };
 
-/**
- * Main loop function — the Screeps runtime calls this every tick.
- */
+/** Bumped to trigger a one-time Memory migration on deploy. */
+const SCHEMA_VERSION = 3;
+
 export function loop(): void {
-  // 1. Invalidate the per-tick caches
-  flushCache();
-  flushCensus();
+  cleanupCreepMemory();
+  migrate();
 
-  // 2. Build creep census once (single Game.creeps pass) before
-  //    any module asks for it — avoids lazy builds mid-tick.
-  ensureCensus();
+  runSubsystem("expansion", runExpansionManager);
+  runSubsystem("construction", runConstruction);
+  runSubsystem("towers", runTowers);
+  runSubsystem("spawn", runSpawnManager);
 
-  // 3. Run expansion maintenance (state transitions, intel)
-  try {
-    runExpansionManager();
-  } catch (e) {
-    // Swallow: an expansion error shouldn't kill the rest of the tick.
-  }
-
-  // 4. Run remote-mining maintenance (source evaluation, op lifecycle)
-  try {
-    runRemoteMiningManager();
-  } catch (e) {
-    // Swallow: a remote-mining error shouldn't kill the rest of the tick.
-  }
-
-  // 5. Run spawn management (decide what to spawn this tick)
-  try {
-    runSpawnManager();
-  } catch (e) {
-    // Swallow: a spawn error shouldn't kill the rest of the tick.
-  }
-
-  // 6. Dispatch each creep to its role runner
-  //    NOTE: This is a second Game.creeps pass. The census above
-  //    already did one pass. This second pass is for role dispatch
-  //    which can't be merged because spawn/expansion managers need
-  //    the census data *before* creep actions.
   for (const name in Game.creeps) {
     const creep = Game.creeps[name];
+    const role = creep.memory.role;
+    const runner = role ? ROLE_RUNNERS[role] : undefined;
+    if (!runner) continue;
     try {
-      const role = creep.memory.role as CreepRole | undefined;
-      if (role && ROLE_RUNNERS[role]) {
-        ROLE_RUNNERS[role](creep);
-      }
+      runner(creep);
     } catch (e) {
-      // Swallow: a single creep error shouldn't kill the rest of the tick.
+      console.log(`CACHE role ${role} (${name}) error: ${(e as Error)?.message ?? e}`);
     }
   }
 
-  // 7. Write telemetry LAST so SPARSE observes this tick's real state — the
-  //    overseer is blind without a fresh Memory.stats every tick.
+  runSubsystem("stats", writeStats);
+}
+
+/** Delete Memory.creeps entries whose creep no longer exists (leak fix). */
+function cleanupCreepMemory(): void {
+  for (const name in Memory.creeps) {
+    if (!(name in Game.creeps)) delete Memory.creeps[name];
+  }
+}
+
+/** One-time cleanup of removed subsystems and corrupt legacy state. */
+function migrate(): void {
+  if (Memory.version === SCHEMA_VERSION) return;
+  // Remote-mining was removed — drop its (inert) memory.
+  delete (Memory as { remoteMining?: unknown }).remoteMining;
+  // The legacy expansion state was wedged (claiming an unreachable room); reset
+  // it so the gated manager re-initialises a clean default.
+  Memory.expansion = undefined;
+  Memory.version = SCHEMA_VERSION;
+  console.log(`CACHE: migrated Memory to schema v${SCHEMA_VERSION}`);
+}
+
+function runSubsystem(label: string, fn: () => void): void {
   try {
-    writeStats();
+    fn();
   } catch (e) {
-    console.log("CACHE writeStats error: " + ((e as Error) && (e as Error).message));
+    console.log(`CACHE ${label} error: ${(e as Error)?.message ?? e}`);
   }
 }

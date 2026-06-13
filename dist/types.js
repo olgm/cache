@@ -1,27 +1,20 @@
 "use strict";
 /**
- * Cache v0.0.4 — Shared types, constants, and interfaces.
+ * Cache v0.3.0 — Shared types, constants, and interfaces.
+ *
+ * This release is a fundamentals rewrite: a static-mining economy (dedicated
+ * container miners + haulers), RCL-scaled creep counts and body sizes, an
+ * auto-construction planner, tower defense, and a gated multi-room expansion.
+ * The legacy remote-mining subsystem was removed (premature for an early
+ * single-room colony — re-introduce at RCL4+).
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ROLE_PRIORITY = exports.TARGET_COUNTS = exports.REMOTE_BODIES = exports.EXPANSION_BODIES = exports.TIER1_BODIES = exports.BODY_COST = void 0;
+exports.BODY_COST = void 0;
 exports.defaultExpansionMemory = defaultExpansionMemory;
-exports.defaultRemoteMiningMemory = defaultRemoteMiningMemory;
 function defaultExpansionMemory() {
-    return {
-        state: "idle",
-        scoutDispatched: false,
-        claimerSpawned: false,
-        scoutedRooms: {},
-    };
+    return { state: "idle", scoutedRooms: {}, intel: {} };
 }
-function defaultRemoteMiningMemory() {
-    return {
-        ops: {},
-        knownSources: {},
-        lastScoutTick: 0,
-    };
-}
-// --- Body part costs (taken from Screeps constants) ---
+// --- Body part costs (from Screeps constants) ---
 exports.BODY_COST = {
     move: 50,
     work: 100,
@@ -31,36 +24,5 @@ exports.BODY_COST = {
     heal: 250,
     claim: 600,
     tough: 10,
-};
-// --- Energy budget tiers (RCL 1–2 only) ---
-exports.TIER1_BODIES = {
-    harvester: [WORK, CARRY, MOVE],
-    builder: [WORK, CARRY, MOVE],
-    upgrader: [WORK, CARRY, MOVE],
-};
-// --- Bodies for expansion & remote roles ---
-exports.EXPANSION_BODIES = {
-    scout: [MOVE],
-    claimer: [CLAIM, MOVE],
-};
-exports.REMOTE_BODIES = {
-    remoteHarvester: [WORK, WORK, MOVE],
-    remoteHauler: [CARRY, CARRY, MOVE, MOVE],
-};
-// --- Creep counts per role we target at RCL 1–2 ---
-exports.TARGET_COUNTS = {
-    harvester: 2,
-    builder: 1,
-    upgrader: 2,
-};
-// --- Role priority for spawning (lower spawns first) ---
-exports.ROLE_PRIORITY = {
-    harvester: 0,
-    builder: 1,
-    upgrader: 2,
-    claimer: 3,
-    scout: 3,
-    remoteHarvester: 3,
-    remoteHauler: 4,
 };
 //# sourceMappingURL=types.js.map
