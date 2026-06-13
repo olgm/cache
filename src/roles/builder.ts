@@ -12,12 +12,18 @@ import { travel } from "../utils/movement";
 import { getRoomData } from "../utils/roomData";
 import { gatherEnergy } from "../utils/energy";
 
-/** Lower number = built first. */
+/**
+ * Lower number = built first. Economy-first: extensions raise energyCapacity
+ * (compounding every creep's size) and containers unlock static mining, so both
+ * come before the tower — with no active threat the fastest path to a strong,
+ * RCL-climbing colony is economy, and safe-mode covers the bootstrap defense gap.
+ * A missing spawn (expansion bootstrap) always wins.
+ */
 const BUILD_PRIORITY: Partial<Record<StructureConstant, number>> = {
   [STRUCTURE_SPAWN]: 0,
-  [STRUCTURE_TOWER]: 1,
-  [STRUCTURE_EXTENSION]: 2,
-  [STRUCTURE_CONTAINER]: 3,
+  [STRUCTURE_EXTENSION]: 1,
+  [STRUCTURE_CONTAINER]: 2,
+  [STRUCTURE_TOWER]: 3,
   [STRUCTURE_STORAGE]: 4,
   [STRUCTURE_LINK]: 5,
   [STRUCTURE_ROAD]: 6,
