@@ -101,17 +101,28 @@ function workerBody(budget, maxRepeat) {
     return n < maxRepeat ? fillWork(body, budget - n * unitCostV) : body;
 }
 /**
- * Upgrader: WORK-heavy with enough CARRY to buffer. Capped at 15 WORK because a
- * controller accepts at most 15 energy/tick of upgrade once at RCL8 (and big
- * upgraders are wasteful past that); below RCL8 more WORK is always useful.
+ * Upgrader: balanced WORK:CARRY for high uptime. Each unit is 1 WORK + 1 CARRY
+ * + 1 MOVE (200e), giving a 1:1 work-to-carry ratio that keeps the creep
+ * upgrading for ~50 ticks between refills instead of the 12-25 ticks a 2:1
+ * ratio gives — halving the number of refill trips and nearly doubling the
+ * effective energy→control-point conversion rate. Capped at 15 WORK total
+ * because a controller accepts at most 15 energy/tick of upgrade at RCL8.
  */
 function upgraderBody(budget, rcl) {
-    const unit = [WORK, WORK, CARRY, MOVE]; // 2 WORK / 300e
-    const maxByCap = rcl >= 8 ? 4 : 8; // RCL8: ~8 WORK is plenty for the 15/tick cap
+    const unit = [WORK, CARRY, MOVE]; // 1:1:1, 200e
+    const maxByCap = rcl >= 8 ? 4 : 8;
     const uc = unitCost(unit);
     const n = Math.max(1, Math.min(maxByCap, Math.floor(budget / uc)));
     const body = repeat(unit, budget, maxByCap);
-    return n < maxByCap ? fillWork(body, budget - n * uc) : body;
+    // Fill remaining budget with spare WORK+CARRY pairs, then any final MOVE.
+    let left = budget - n * uc;
+    while (left >= types_1.BODY_COST.work + types_1.BODY_COST.carry && body.length < MAX_PARTS - 1) {
+        body.push(WORK, CARRY);
+        left -= types_1.BODY_COST.work + types_1.BODY_COST.carry;
+    }
+    if (left >= types_1.BODY_COST.move && body.length < MAX_PARTS)
+        body.push(MOVE);
+    return body;
 }
 /** Melee defender: ATTACK with 1:1 MOVE so it stays mobile while fighting. */
 function defenderBody(budget) {
@@ -176,16 +187,46 @@ function roleTargets(data, current) {
     else {
         targets.hauler = 0;
     }
-    // --- Upgraders: 1 baseline, scaled up by surplus (storage) energy. ---
-    if (rcl >= 8) {
-        targets.upgrader = 1; // controller capped at 15/tick — one fat upgrader suffices
-    }
-    else if (storage) {
-        const e = storage.store[RESOURCE_ENERGY];
-        targets.upgrader = Math.min(4, 1 + Math.floor(e / 20000));
-    }
-    else {
-        targets.upgrader = withContainer > 0 ? 2 : 1;
+    // --- Upgraders: baseline scaled by RCL, surplus energy, and waste detection. ---
+    // GCL progress is earned by controller upgrades — each energy unit spent
+    // upgrading yields 1 control point.  The more upgraders we keep busy, the
+    // faster GCL grows and the sooner we can expand to a second room.  At low
+    // RCL energy production often outstrips spawn+extension sink capacity; we
+    // detect that waste and route it into the controller.
+    {
+        let upg = 1;
+        if (rcl >= 8) {
+            upg = 1; // capped at 15 energy/tick — one fat upgrader is enough
+        }
+        else if (storage) {
+            const e = storage.store[RESOURCE_ENERGY];
+            upg = Math.min(5, 2 + Math.floor(e / 15000));
+        }
+        else {
+            // No storage yet: scale by RCL and containerization.  At RCL 3 with two
+            // container-mined sources the colony produces ~20 energy/tick — enough
+            // to keep 3-4 upgraders busy when spawn+extensions are full.
+            if (rcl >= 6)
+                upg = 4;
+            else if (rcl >= 4)
+                upg = 3;
+            else if (rcl >= 3)
+                upg = withContainer > 0 ? 3 : 2;
+            else
+                upg = withContainer > 0 ? 2 : 1; // RCL 1-2: bootstrap
+        }
+        // Waste detection: when spawn+extensions are near full (>80%), harvested
+        // energy has nowhere to go — bump the upgrader target so surplus becomes
+        // control points instead of decaying in containers or being lost to capped
+        // buffers.  Only applies when there's no storage (storage absorbs surplus).
+        if (!storage) {
+            const spawnExt = [...data.spawns, ...data.extensions];
+            const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY), 0);
+            const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
+            if (totalCap > 0 && totalE > totalCap * 0.8)
+                upg = Math.max(upg, upg + 1);
+        }
+        targets.upgrader = upg;
     }
     // --- Builders: scale with construction load. ---
     const sites = constructionSites.length;

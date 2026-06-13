@@ -18,9 +18,12 @@ export declare function haulerBody(budget: number): BodyPartConstant[];
 /** Generalist worker (harvester bootstrap / builder): balanced, budget-filling. */
 export declare function workerBody(budget: number, maxRepeat: number): BodyPartConstant[];
 /**
- * Upgrader: WORK-heavy with enough CARRY to buffer. Capped at 15 WORK because a
- * controller accepts at most 15 energy/tick of upgrade once at RCL8 (and big
- * upgraders are wasteful past that); below RCL8 more WORK is always useful.
+ * Upgrader: balanced WORK:CARRY for high uptime. Each unit is 1 WORK + 1 CARRY
+ * + 1 MOVE (200e), giving a 1:1 work-to-carry ratio that keeps the creep
+ * upgrading for ~50 ticks between refills instead of the 12-25 ticks a 2:1
+ * ratio gives — halving the number of refill trips and nearly doubling the
+ * effective energy→control-point conversion rate. Capped at 15 WORK total
+ * because a controller accepts at most 15 energy/tick of upgrade at RCL8.
  */
 export declare function upgraderBody(budget: number, rcl: number): BodyPartConstant[];
 /** Melee defender: ATTACK with 1:1 MOVE so it stays mobile while fighting. */
