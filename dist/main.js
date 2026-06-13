@@ -24,6 +24,7 @@ const claimer_1 = require("./roles/claimer");
 const scout_1 = require("./roles/scout");
 const remoteHarvester_1 = require("./roles/remoteHarvester");
 const remoteHauler_1 = require("./roles/remoteHauler");
+const stats_1 = require("./stats");
 /** Map role identifiers to their runner function. */
 const ROLE_RUNNERS = {
     harvester: harvester_1.runHarvester,
@@ -81,6 +82,14 @@ function loop() {
         catch (e) {
             // Swallow: a single creep error shouldn't kill the rest of the tick.
         }
+    }
+    // 7. Write telemetry LAST so SPARSE observes this tick's real state — the
+    //    overseer is blind without a fresh Memory.stats every tick.
+    try {
+        (0, stats_1.writeStats)();
+    }
+    catch (e) {
+        console.log("CACHE writeStats error: " + (e && e.message));
     }
 }
 //# sourceMappingURL=main.js.map

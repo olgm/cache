@@ -34,6 +34,7 @@ declare global {
   interface Memory {
     expansion?: ExpansionMemory;
     remoteMining?: RemoteMiningMemory;
+    stats?: CacheStats;
   }
 }
 
@@ -154,3 +155,33 @@ export const ROLE_PRIORITY: Record<string, number> = {
   remoteHarvester: 3,
   remoteHauler:    4,
 };
+
+
+// --- Stats telemetry (mirrors what SPARSE's parseStats reads) ---
+export interface CacheStats {
+  /** Game tick this snapshot was written at (SPARSE's freshness signal). */
+  tick: number;
+  /** Wall-clock ms (Date.now()) when written. */
+  time: number;
+  gcl: { level: number; progress: number; progressTotal: number };
+  gpl: { level: number; progress: number; progressTotal: number };
+  cpu: { used: number; limit: number; bucket: number };
+  credits: number;
+  shard: string;
+  rooms: Record<
+    string,
+    {
+      rcl: number;
+      rclProgress: number;
+      rclProgressTotal: number;
+      energy: number;
+      energyCapacity: number;
+      storage: number;
+      hostiles: number;
+      myCreeps: number;
+      income1k: number;
+    }
+  >;
+  creepsByRole: Record<string, number>;
+  spawnQueues: number;
+}

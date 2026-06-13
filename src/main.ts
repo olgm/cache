@@ -23,9 +23,10 @@ import { runScout } from "./roles/scout";
 import { runRemoteHarvester } from "./roles/remoteHarvester";
 import { runRemoteHauler } from "./roles/remoteHauler";
 import { CreepRole } from "./types";
+import { writeStats } from "./stats";
 
 /** Map role identifiers to their runner function. */
-const ROLE_RUNNERS: Record<CreepRole, (creep: Creep) => void> = {
+const ROLE_RUNNERS: Partial<Record<CreepRole, (creep: Creep) => void>> = {
   harvester: runHarvester,
   builder: runBuilder,
   upgrader: runUpgrader,
@@ -83,5 +84,13 @@ export function loop(): void {
     } catch (e) {
       // Swallow: a single creep error shouldn't kill the rest of the tick.
     }
+  }
+
+  // 7. Write telemetry LAST so SPARSE observes this tick's real state — the
+  //    overseer is blind without a fresh Memory.stats every tick.
+  try {
+    writeStats();
+  } catch (e) {
+    console.log("CACHE writeStats error: " + ((e as Error) && (e as Error).message));
   }
 }

@@ -23,6 +23,7 @@ declare global {
     interface Memory {
         expansion?: ExpansionMemory;
         remoteMining?: RemoteMiningMemory;
+        stats?: CacheStats;
     }
 }
 export type ExpansionState = "idle" | "scouting" | "claiming" | "bootstrapping";
@@ -74,3 +75,39 @@ export declare const EXPANSION_BODIES: Record<string, BodyPartConstant[]>;
 export declare const REMOTE_BODIES: Record<string, BodyPartConstant[]>;
 export declare const TARGET_COUNTS: Record<string, number>;
 export declare const ROLE_PRIORITY: Record<string, number>;
+export interface CacheStats {
+    /** Game tick this snapshot was written at (SPARSE's freshness signal). */
+    tick: number;
+    /** Wall-clock ms (Date.now()) when written. */
+    time: number;
+    gcl: {
+        level: number;
+        progress: number;
+        progressTotal: number;
+    };
+    gpl: {
+        level: number;
+        progress: number;
+        progressTotal: number;
+    };
+    cpu: {
+        used: number;
+        limit: number;
+        bucket: number;
+    };
+    credits: number;
+    shard: string;
+    rooms: Record<string, {
+        rcl: number;
+        rclProgress: number;
+        rclProgressTotal: number;
+        energy: number;
+        energyCapacity: number;
+        storage: number;
+        hostiles: number;
+        myCreeps: number;
+        income1k: number;
+    }>;
+    creepsByRole: Record<string, number>;
+    spawnQueues: number;
+}
