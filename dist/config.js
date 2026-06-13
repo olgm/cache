@@ -74,9 +74,31 @@ function minerBody(budget) {
 function haulerBody(budget) {
     return repeat([CARRY, CARRY, MOVE], budget, 8); // up to 16 CARRY = 800 capacity
 }
-/** Generalist worker (harvester bootstrap / builder): balanced WORK/CARRY/MOVE. */
+/**
+ * Spend any leftover budget (after whole units) on extra WORK then a MOVE, so a
+ * creep uses its FULL energy capacity instead of leaving a fraction of a unit
+ * unspent. This matters most during the cap=300 bootstrap, where [WORK,CARRY,
+ * MOVE] (200e, 1 WORK) wastes 100e — filling it to 2 WORK halves the time to
+ * build the first extensions, which is the whole early-game bottleneck.
+ */
+function fillWork(body, leftover) {
+    let left = leftover;
+    while (left >= types_1.BODY_COST.work && body.length < MAX_PARTS) {
+        body.push(WORK);
+        left -= types_1.BODY_COST.work;
+    }
+    if (left >= types_1.BODY_COST.move && body.length < MAX_PARTS)
+        body.push(MOVE);
+    return body;
+}
+/** Generalist worker (harvester bootstrap / builder): balanced, budget-filling. */
 function workerBody(budget, maxRepeat) {
-    return repeat([WORK, CARRY, MOVE], budget, maxRepeat);
+    const unitCostV = unitCost([WORK, CARRY, MOVE]);
+    const n = Math.max(1, Math.min(maxRepeat, Math.floor(budget / unitCostV)));
+    const body = repeat([WORK, CARRY, MOVE], budget, maxRepeat);
+    // Only fill when the BUDGET (not maxRepeat) was the binding constraint, so
+    // size-capped roles stay balanced.
+    return n < maxRepeat ? fillWork(body, budget - n * unitCostV) : body;
 }
 /**
  * Upgrader: WORK-heavy with enough CARRY to buffer. Capped at 15 WORK because a
@@ -84,9 +106,12 @@ function workerBody(budget, maxRepeat) {
  * upgraders are wasteful past that); below RCL8 more WORK is always useful.
  */
 function upgraderBody(budget, rcl) {
-    // unit [WORK,WORK,CARRY,MOVE] = 2 WORK / 300e; cap repeats so WORK<=~15.
+    const unit = [WORK, WORK, CARRY, MOVE]; // 2 WORK / 300e
     const maxByCap = rcl >= 8 ? 4 : 8; // RCL8: ~8 WORK is plenty for the 15/tick cap
-    return repeat([WORK, WORK, CARRY, MOVE], budget, maxByCap);
+    const uc = unitCost(unit);
+    const n = Math.max(1, Math.min(maxByCap, Math.floor(budget / uc)));
+    const body = repeat(unit, budget, maxByCap);
+    return n < maxByCap ? fillWork(body, budget - n * uc) : body;
 }
 /** Melee defender: ATTACK with 1:1 MOVE so it stays mobile while fighting. */
 function defenderBody(budget) {
@@ -104,7 +129,7 @@ function claimerBody(budget) {
 }
 /** Pioneer: a big mobile generalist that bootstraps a freshly-claimed room. */
 function pioneerBody(budget) {
-    return repeat([WORK, CARRY, MOVE], Math.min(budget, 1500), 6);
+    return workerBody(Math.min(budget, 1500), 6);
 }
 /**
  * Compute the desired creep population for a room from its current state.

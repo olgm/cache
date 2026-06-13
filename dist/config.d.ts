@@ -15,7 +15,7 @@ import { RoomData } from "./utils/roomData";
 export declare function minerBody(budget: number): BodyPartConstant[];
 /** Hauler: CARRY/MOVE at a 2:1 ratio (assumes roads; half-speed when loaded off-road). */
 export declare function haulerBody(budget: number): BodyPartConstant[];
-/** Generalist worker (harvester bootstrap / builder): balanced WORK/CARRY/MOVE. */
+/** Generalist worker (harvester bootstrap / builder): balanced, budget-filling. */
 export declare function workerBody(budget: number, maxRepeat: number): BodyPartConstant[];
 /**
  * Upgrader: WORK-heavy with enough CARRY to buffer. Capped at 15 WORK because a
