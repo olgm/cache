@@ -16,6 +16,8 @@ export type CreepRole =
   | "hauler" // moves energy from source containers/dropped piles to sinks
   | "upgrader" // upgrades the room controller
   | "builder" // builds construction sites; repairs when idle
+  // remote mining
+  | "remoteHarvester" // mines unclaimed sources in adjacent rooms; delivers energy home
   // defense
   | "defender" // attacks hostile creeps (fallback when towers are absent/insufficient)
   // expansion

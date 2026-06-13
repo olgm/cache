@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-13 19:00 UTC — Add remote harvesters and haulers for W43N38
+
+Deploy dedicated remote harvester and hauler creeps to boost energy throughput from W43N38 sources.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** remote-mining weakness (`remote-mining`)
+- **Eval score:** 45/100
+
+**Why:** Room W43N38 energy throughput is low; add harvesters/haulers or sources.
+
+**Issues addressed:**
+- eval: energy sub-score below healthy
+
 ### 2026-06-13 18:00 UTC — Redirect energy to room controller upgrades
 
 Shift creep task allocation so surplus energy flows into upgrading room controllers rather than idle stockpiling, directly addressing the low GCL score.

@@ -7,7 +7,7 @@
  * The legacy remote-mining subsystem was removed (premature for an early
  * single-room colony — re-introduce at RCL4+).
  */
-export type CreepRole = "harvester" | "miner" | "hauler" | "upgrader" | "builder" | "defender" | "scout" | "claimer" | "pioneer";
+export type CreepRole = "harvester" | "miner" | "hauler" | "upgrader" | "builder" | "remoteHarvester" | "defender" | "scout" | "claimer" | "pioneer";
 declare global {
     interface CreepMemory {
         role: CreepRole;
