@@ -38,15 +38,17 @@ function runUpgrader(creep) {
             (0, movement_1.travel)(creep, cc);
         return;
     }
-    // Waste prevention: when spawn+extensions are over half full (>60%), pull
-    // from them directly so harvested energy doesn't pile up behind a capped
-    // buffer.  This only fires when there's no controller container (the fast
-    // path above), and only when there's no storage to absorb the surplus.
+    // Waste prevention: when spawn+extensions are nearly full (>90%), harvest
+    // energy has nowhere to go — pull from them directly so surplus becomes
+    // control points instead of blocking harvester deliveries.  Only fires when
+    // there's no controller container (the fast path above) and no storage to
+    // absorb the surplus.  The 90 % threshold is deliberately high to avoid
+    // starving spawn of energy for the next creep.
     if (!data.storage) {
         const spawnExt = [...data.spawns, ...data.extensions];
         const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY), 0);
         const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-        if (totalCap > 0 && totalE > totalCap * 0.6) {
+        if (totalCap > 0 && totalE > totalCap * 0.9) {
             const src = spawnExt.find((s) => s.store[RESOURCE_ENERGY] > 0);
             if (src) {
                 if (creep.withdraw(src, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE)

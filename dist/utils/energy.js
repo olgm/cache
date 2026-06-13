@@ -49,7 +49,16 @@ function gatherEnergy(creep, data) {
             (0, movement_1.travel)(creep, data.storage);
         return true;
     }
-    // 4. Source containers (fullest first).
+    // 4. Controller container — upgraders' dedicated supply, adjacent to the
+    //    controller.  Haulers fill it after spawn/extensions, so it tends to
+    //    have energy when the colony is running a surplus.
+    if (data.controllerContainer && data.controllerContainer.store[RESOURCE_ENERGY] >= MIN_PICKUP) {
+        if (creep.withdraw(data.controllerContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+            (0, movement_1.travel)(creep, data.controllerContainer);
+        }
+        return true;
+    }
+    // 5. Source containers (fullest first).
     const containers = data.sources
         .map((s) => s.container)
         .filter((c) => !!c && c.store[RESOURCE_ENERGY] >= MIN_PICKUP)
@@ -60,7 +69,7 @@ function gatherEnergy(creep, data) {
             (0, movement_1.travel)(creep, c);
         return true;
     }
-    // 5. Bootstrap shared buffer: with no containers/storage yet (steps 3-4 found
+    // 6. Bootstrap shared buffer: with no containers/storage yet (steps 3-5 found
     //    nothing), draw from spawn/extensions. Harvesters refill them, and the
     //    spawn manager runs BEFORE creep dispatch each tick, so spawning always
     //    claims its energy first — workers only ever take the leftover. This is

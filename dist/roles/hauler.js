@@ -82,13 +82,17 @@ function chooseSink(creep, data) {
     if (data.hostiles.length > 0 && towers.length > 0) {
         return creep.pos.findClosestByRange(towers);
     }
+    // Spawn & extensions first — spawning is the colony heartbeat.
     if (spawnExt.length > 0)
         return creep.pos.findClosestByRange(spawnExt);
-    if (towers.length > 0)
-        return creep.pos.findClosestByRange(towers);
+    // Controller container before towers: controller upgrades fuel GCL, which
+    // unlocks multi-room expansion.  Towers only need energy for defence — at
+    // early-game threat levels the tower's 500e reserve is rarely drawn.
     if (data.controllerContainer && data.controllerContainer.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
         return data.controllerContainer;
     }
+    if (towers.length > 0)
+        return creep.pos.findClosestByRange(towers);
     if (data.storage && data.storage.store.getFreeCapacity(RESOURCE_ENERGY) > 0)
         return data.storage;
     return null;

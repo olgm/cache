@@ -212,9 +212,12 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
     }
 
     // GCL push: when GCL is low (1–3) expansion is gated by control points,
-    // not rooms, so every spare joule must go into the controller.  Add a
-    // permanent +1 upgrader at GCL 1–2, tapering at GCL 3.
-    if (Game.gcl.level <= 2) upg += 1;
+    // not rooms, so every spare joule must go into the controller.  At GCL 1
+    // a second room is impossible — the ONLY path forward is upgrading the
+    // home controller, so we push harder (+2).  At GCL 2 expansion is
+    // unlocked but still tight (+1).  At GCL 3 the taper begins.
+    if (Game.gcl.level === 1) upg += 2;
+    else if (Game.gcl.level === 2) upg += 1;
     else if (Game.gcl.level === 3) upg = Math.max(upg, 3);
 
     // Waste detection: when spawn+extensions are near full (>60%), harvested
