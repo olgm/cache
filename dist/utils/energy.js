@@ -60,7 +60,22 @@ function gatherEnergy(creep, data) {
             (0, movement_1.travel)(creep, c);
         return true;
     }
-    // 5. Fallback: harvest an active source directly (bootstrap generalist).
+    // 5. Bootstrap shared buffer: with no containers/storage yet (steps 3-4 found
+    //    nothing), draw from spawn/extensions. Harvesters refill them, and the
+    //    spawn manager runs BEFORE creep dispatch each tick, so spawning always
+    //    claims its energy first — workers only ever take the leftover. This is
+    //    far more efficient than competing with harvesters for source tiles, and
+    //    is what lets the first extensions actually get built at cap=300.
+    const buffer = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
+        filter: (s) => (s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION) &&
+            s.store[RESOURCE_ENERGY] > 0,
+    });
+    if (buffer) {
+        if (creep.withdraw(buffer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE)
+            (0, movement_1.travel)(creep, buffer);
+        return true;
+    }
+    // 6. Last resort: harvest an active source directly.
     const src = creep.pos.findClosestByRange(FIND_SOURCES_ACTIVE);
     if (src) {
         if (creep.harvest(src) === ERR_NOT_IN_RANGE)
