@@ -1,107 +1,100 @@
 /**
- * Cache v0.0.4 — Shared types, constants, and interfaces.
+ * Cache v0.3.0 — Shared types, constants, and interfaces.
+ *
+ * This release is a fundamentals rewrite: a static-mining economy (dedicated
+ * container miners + haulers), RCL-scaled creep counts and body sizes, an
+ * auto-construction planner, tower defense, and a gated multi-room expansion.
+ * The legacy remote-mining subsystem was removed (premature for an early
+ * single-room colony — re-introduce at RCL4+).
  */
-
-// --- Room-level metrics (mirrors Screeps stats) ---
-export interface RoomStats {
-  gcl: number;
-  cpu: { used: number; limit: number; bucket: number };
-  rooms: Record<string, unknown>;
-}
 
 // --- Creep role identifiers ---
 export type CreepRole =
-  | "harvester"
-  | "builder"
-  | "upgrader"
-  | "claimer"
-  | "scout"
-  | "remoteScout"
-  | "remoteHarvester"
-  | "remoteHauler";
+  // economy
+  | "harvester" // generalist bootstrap: mines AND delivers (used until a source has a container)
+  | "miner" // stationary container miner, one per source (drop/container mining)
+  | "hauler" // moves energy from source containers/dropped piles to sinks
+  | "upgrader" // upgrades the room controller
+  | "builder" // builds construction sites; repairs when idle
+  // defense
+  | "defender" // attacks hostile creeps (fallback when towers are absent/insufficient)
+  // expansion
+  | "scout" // cheap MOVE creep that gathers room intel
+  | "claimer" // claims a target room's controller
+  | "pioneer"; // bootstraps a freshly-claimed room until it has its own spawn
 
 // --- Augment Screeps memory types ---
 declare global {
   interface CreepMemory {
-    role?: CreepRole;
-    targetRoom?: string;
-    claimed?: boolean;
-    sourceId?: Id<Source>;
+    role: CreepRole;
+    /** Room this creep belongs to and operates in (falls back to current room). */
     homeRoom?: string;
+    /** Miner: the source it is assigned to. */
+    sourceId?: Id<Source>;
+    /** Scout/claimer/pioneer: the room to travel to. */
+    targetRoom?: string;
+    /** Builder/upgrader/harvester: true = spending energy, false = gathering. */
+    working?: boolean;
+    /** Hauler: true = delivering, false = collecting. */
     hauling?: boolean;
+    /** Claimer: set once the target controller is claimed. */
+    claimed?: boolean;
+    /** True if this creep was spawned in emergency-bootstrap mode (undersized). */
+    bootstrap?: boolean;
+  }
+
+  interface RoomMemory {
+    /** Base-layout anchor — the first spawn's position. Structures stamp around it. */
+    anchor?: { x: number; y: number };
+    /** Tick the construction planner last ran a full pass (throttling). */
+    lastPlan?: number;
+    /** Tick roads were last planned (re-pathing is expensive; throttle hard). */
+    lastRoadPlan?: number;
+    /** Map of sourceId → container id beside it (cached so dark/odd ticks are cheap). */
+    sourceContainers?: Record<string, Id<StructureContainer>>;
   }
 
   interface Memory {
     expansion?: ExpansionMemory;
-    remoteMining?: RemoteMiningMemory;
     stats?: CacheStats;
+    /** Schema version, bumped to trigger one-time migrations in main.ts. */
+    version?: number;
   }
 }
 
-// --- Expansion types (v0.0.4) ---
+// --- Expansion types ---
 
-export type ExpansionState = "idle" | "scouting" | "claiming" | "bootstrapping";
+export type ExpansionState =
+  | "idle" // not expanding (gated off, or at room cap)
+  | "scouting" // gathering intel on adjacent rooms
+  | "claiming" // a claimer is en route / claiming
+  | "bootstrapping"; // claimed; pioneers building the first spawn
+
+export interface RoomIntel {
+  sources: number;
+  /** Controller owner username, if any. */
+  owner?: string;
+  /** Reserved by another player. */
+  reserved?: boolean;
+  /** Hostiles or source-keeper lairs present. */
+  hostile?: boolean;
+  lastSeen: number;
+}
 
 export interface ExpansionMemory {
   state: ExpansionState;
   targetRoom?: string;
-  scoutDispatched: boolean;
-  claimerSpawned: boolean;
-  scoutedRooms: Record<string, number>; // roomName → last scout tick
+  /** roomName → last-scouted tick. */
+  scoutedRooms: Record<string, number>;
+  /** roomName → cached intel for target selection. */
+  intel: Record<string, RoomIntel>;
 }
 
 export function defaultExpansionMemory(): ExpansionMemory {
-  return {
-    state: "idle",
-    scoutDispatched: false,
-    claimerSpawned: false,
-    scoutedRooms: {},
-  };
+  return { state: "idle", scoutedRooms: {}, intel: {} };
 }
 
-// --- Remote-mining types (v0.1.0) ---
-
-export type RemoteMiningState = "idle" | "active";
-
-export interface RemoteSourceInfo {
-  id: string; // Source id
-  x: number;
-  y: number;
-  roomName: string;
-  assignedHarvesters: number;
-  assignedHaulers: number;
-}
-
-export interface RemoteOp {
-  roomName: string;
-  state: RemoteMiningState;
-  homeRoom: string;
-  sources: RemoteSourceInfo[];
-  lastEval: number;
-  /** Cumulative energy hauled from this remote op (reset on deactivation). */
-  totalHauled: number;
-  /** Tick when energy was last hauled from this op. */
-  lastHaulTick: number;
-}
-
-export interface RemoteMiningMemory {
-  ops: Record<string, RemoteOp>; // keyed by remote room name
-  /** Cached source info from adjacent rooms, populated when visible.
-   *  Persists across ticks so ops can start even when the room is dark. */
-  knownSources: Record<string, RemoteSourceInfo[]>; // roomName → sources
-  /** Tick when the last remote scout was dispatched. */
-  lastScoutTick: number;
-}
-
-export function defaultRemoteMiningMemory(): RemoteMiningMemory {
-  return {
-    ops: {},
-    knownSources: {},
-    lastScoutTick: 0,
-  };
-}
-
-// --- Body part costs (taken from Screeps constants) ---
+// --- Body part costs (from Screeps constants) ---
 export const BODY_COST: Record<BodyPartConstant, number> = {
   move: 50,
   work: 100,
@@ -113,51 +106,7 @@ export const BODY_COST: Record<BodyPartConstant, number> = {
   tough: 10,
 };
 
-// --- Spawn request descriptor ---
-export interface SpawnRequest {
-  role: CreepRole;
-  body: BodyPartConstant[];
-  priority: number; // lower = more urgent
-}
-
-// --- Energy budget tiers (RCL 1–2 only) ---
-export const TIER1_BODIES: Record<string, BodyPartConstant[]> = {
-  harvester: [WORK, CARRY, MOVE],
-  builder:   [WORK, CARRY, MOVE],
-  upgrader:  [WORK, CARRY, MOVE],
-};
-
-// --- Bodies for expansion & remote roles ---
-export const EXPANSION_BODIES: Record<string, BodyPartConstant[]> = {
-  scout:   [MOVE],
-  claimer: [CLAIM, MOVE],
-};
-
-export const REMOTE_BODIES: Record<string, BodyPartConstant[]> = {
-  remoteHarvester: [WORK, WORK, MOVE],
-  remoteHauler:    [CARRY, CARRY, MOVE, MOVE],
-};
-
-// --- Creep counts per role we target at RCL 1–2 ---
-export const TARGET_COUNTS: Record<string, number> = {
-  harvester: 2,
-  builder:   1,
-  upgrader:  2,
-};
-
-// --- Role priority for spawning (lower spawns first) ---
-export const ROLE_PRIORITY: Record<string, number> = {
-  harvester: 0,
-  builder:   1,
-  upgrader:  2,
-  claimer:  3,
-  scout:    3,
-  remoteHarvester: 3,
-  remoteHauler:    4,
-};
-
-
-// --- Stats telemetry (mirrors what SPARSE's parseStats reads) ---
+// --- Stats telemetry (the shape SPARSE's parseStats reads — DO NOT break) ---
 export interface CacheStats {
   /** Game tick this snapshot was written at (SPARSE's freshness signal). */
   tick: number;

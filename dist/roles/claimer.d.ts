@@ -1,11 +1,9 @@
 /**
- * Cache v0.0.3 — Claimer role.
+ * Cache — Claimer role.
  *
- * Moves to the target room (stored in creep.memory.targetRoom) and claims
- * the controller.  Once the claim succeeds the creep flags itself as done
- * (creep.memory.claimed = true) and the expansion manager can move on.
- *
- * After claiming the creep switches to upgrading the new controller to
- * kick-start GCL progress in the new room.
+ * Travels to its target room and claims the controller, then helps upgrade it
+ * (signalling presence and starting RCL progress) until it expires. The
+ * expansion gate guarantees GCL headroom before a claimer is ever spawned, so a
+ * claim should always succeed.
  */
 export declare function runClaimer(creep: Creep): void;

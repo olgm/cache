@@ -1,352 +1,250 @@
 /**
- * Cache v0.0.5 — Expansion manager.
+ * Cache — Expansion manager (gated, correct).
  *
- * Drives multi-room expansion:
- *   1. Scout adjacent rooms (even while GCL-locked) to gather intel.
- *   2. When GCL allows a new room, pick the best scouted target.
- *   3. Spawn a claimer to capture the target controller.
- *   4. After claiming, hand off to the normal spawn pipeline for bootstrapping.
+ * Drives a SECOND room only once the home colony can clearly afford it. The
+ * old version wedged itself (claiming an unreachable room at GCL1, claimer never
+ * able to claim); this one is hard-gated and self-validating:
  *
- * State machine persisted in Memory.expansion.
+ *   gate: ownedRooms < GCL (the real claim limit) AND a mature base
+ *         (RCL >= 4 with a storage = genuine energy surplus).
  *
- * v0.0.5 CPU optimisations:
- *   - ownedRoomCount cached per tick (called multiple times).
- *   - hasActiveClaimer / hasActiveScout via creep census (no extra iteration).
- *   - Expensive room scoring throttled to every 20 ticks.
- *   - pickTarget uses cached room structures instead of repeated find().
+ * Flow: idle → scouting (a scout maps adjacent rooms) → claiming (a claimer
+ * takes the best adjacent controller) → bootstrapping (pioneers build the new
+ * room's first spawn; the construction planner places the spawn site) → idle.
+ *
+ * At GCL1 / RCL3 (the current live colony) the gate is closed, so this stays
+ * dormant and can never wedge — the corrupt legacy state is reset on migration.
  */
 
 import {
-  ExpansionMemory,
-  ExpansionState,
-  defaultExpansionMemory,
   CreepRole,
+  ExpansionMemory,
+  RoomIntel,
+  defaultExpansionMemory,
 } from "./types";
-import { getCensus } from "./utils/creepCensus";
+import { RoomData, myRooms } from "./utils/roomData";
+import { buildCensus } from "./utils/census";
+import { scoutBody, claimerBody, pioneerBody } from "./config";
+
+export interface SpawnRequest {
+  role: CreepRole;
+  body: BodyPartConstant[];
+  memory: CreepMemory;
+}
+
+/** How long cached intel stays usable for target selection. */
+const INTEL_TTL = 5000;
+/** Pioneers to send to bootstrap a freshly-claimed room. */
+const PIONEERS_PER_ROOM = 3;
 
 // ---------------------------------------------------------------------------
-// Per-tick caches (cleared implicitly when tick changes via Game.time)
+// Memory
 // ---------------------------------------------------------------------------
 
-let _ownedRoomCountCache = -1;
-let _ownedRoomCountTick = -1;
-
-/** How often (ticks) the expansion spawn-request logic does a full evaluation. */
-const EVAL_THROTTLE = 20;
-
-/** Cached last tick we ran the full evaluation. */
-let _lastEvalTick = -1;
-/** Cached result from the last evaluation (null = no request). */
-let _cachedSpawnRequest: ExpansionSpawnRequest | null = null;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Number of rooms we are allowed to control: GCL level + 1. */
-function maxRooms(): number {
-  return Game.gcl.level + 1;
-}
-
-/** Count rooms we own (have a controller with our name on it). Cached per tick. */
-function ownedRoomCount(): number {
-  if (_ownedRoomCountTick === Game.time) return _ownedRoomCountCache;
-  let count = 0;
-  for (const _ in Game.rooms) {
-    const room = Game.rooms[_];
-    if (room.controller && room.controller.my) count++;
-  }
-  _ownedRoomCountCache = count;
-  _ownedRoomCountTick = Game.time;
-  return count;
-}
-
-/** Return adjacent room names using the game map. */
-function adjacentRooms(roomName: string): string[] {
-  const exits = Game.map.describeExits(roomName);
-  return exits ? Object.values(exits) : [];
-}
-
-/** Check whether we have intel on a room (it's visible or recently scouted). */
-function hasIntel(roomName: string): boolean {
-  if (Game.rooms[roomName]) return true;
-  const mem = ensureMem();
-  if (mem.scoutedRooms && mem.scoutedRooms[roomName]) {
-    // Scouted within the last 1500 ticks (~25 min) is still fresh.
-    return Game.time - mem.scoutedRooms[roomName] < 1500;
-  }
-  return false;
-}
-
-/**
- * Score a candidate room for expansion (higher = better).
- * Requires intel: the room must be visible.
- * NOTE: this is expensive (multiple find() calls); only call when throttled.
- */
-function scoreRoom(room: Room): number {
-  if (!room.controller || room.controller.owner || room.controller.reservation) {
-    return -1; // owned or reserved: skip unless we're contesting (future)
-  }
-
-  let score = 0;
-
-  // Sources are the primary energy income
-  const sources = room.find(FIND_SOURCES);
-  score += sources.length * 100;
-
-  // Controller proximity to sources (rough)
-  if (room.controller) {
-    for (const src of sources) {
-      const dist = room.controller.pos.getRangeTo(src);
-      score += Math.max(0, 50 - dist * 2); // closer is better
-    }
-  }
-
-  // Penalty for hostile presence
-  const hostiles = room.find(FIND_HOSTILE_CREEPS);
-  if (hostiles.length > 0) score -= 1000;
-
-  // Penalty for keeper lairs (source keepers are dangerous at low RCL)
-  const keeperLairs = room.find(FIND_HOSTILE_STRUCTURES, {
-    filter: (s) => s.structureType === STRUCTURE_KEEPER_LAIR,
-  });
-  if (keeperLairs.length > 0) score -= 500;
-
-  return score;
-}
-
-/** Pick the best adjacent room for expansion. */
-function pickTarget(roomName: string): string | null {
-  const adj = adjacentRooms(roomName);
-  if (adj.length === 0) return null;
-
-  let bestRoom: string | null = null;
-  let bestScore = -Infinity;
-
-  for (const name of adj) {
-    const room = Game.rooms[name];
-    if (!room) continue;
-    const s = scoreRoom(room);
-    if (s > bestScore) {
-      bestScore = s;
-      bestRoom = name;
-    }
-  }
-
-  return bestRoom;
-}
-
-/** Ensure Memory.expansion exists. */
 function ensureMem(): ExpansionMemory {
-  if (!Memory.expansion || !Memory.expansion.state) {
+  if (!Memory.expansion || !Memory.expansion.state || !Memory.expansion.intel) {
     Memory.expansion = defaultExpansionMemory();
   }
   return Memory.expansion;
 }
 
-/** Check if we have an active (unclaimed) claimer creep (via census). */
-function hasActiveClaimer(): boolean {
-  return getCensus().hasActiveClaimer;
-}
-
-/** Check if we have an active scout creep (via census). */
-function hasActiveScout(): boolean {
-  return getCensus().hasActiveScout;
-}
-
 // ---------------------------------------------------------------------------
-// State transitions
+// Helpers
 // ---------------------------------------------------------------------------
 
-function transition(mem: ExpansionMemory, newState: ExpansionState): void {
-  mem.state = newState;
+function adjacentRooms(roomName: string): string[] {
+  const exits = Game.map.describeExits(roomName);
+  return exits ? Object.values(exits) : [];
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/**
- * Return a spawn request the expansion module wants fulfilled this tick,
- * or null if no expansion spawn is needed.
- */
-export interface ExpansionSpawnRequest {
-  role: CreepRole;
-  body: BodyPartConstant[];
-  priority: number;
+function ownedRoomCount(): number {
+  return myRooms().length;
 }
 
-export function getExpansionSpawnRequest(): ExpansionSpawnRequest | null {
-  // Throttle full evaluation — expansion decisions don't change every tick.
-  // Return the cached result for EVAL_THROTTLE ticks.
-  if (Game.time - _lastEvalTick < EVAL_THROTTLE) {
-    // But we must still invalidate if the cached request was fulfilled
-    // (e.g. a claimer was spawned last tick).  Check quickly:
-    if (_cachedSpawnRequest) {
-      const mem = ensureMem();
-      if (_cachedSpawnRequest.role === "claimer" && hasActiveClaimer()) {
-        // Claimer already exists — suppress the cached request
-        return null;
-      }
-      if (_cachedSpawnRequest.role === "scout" && hasActiveScout()) {
-        return null;
-      }
-    }
-    return _cachedSpawnRequest;
+/** The most developed owned room with a spawn — our expansion base. */
+function pickBaseRoom(): Room | null {
+  let best: Room | null = null;
+  for (const room of myRooms()) {
+    if (room.find(FIND_MY_SPAWNS).length === 0) continue;
+    if (!best || (room.controller?.level ?? 0) > (best.controller?.level ?? 0)) best = room;
   }
+  return best;
+}
 
-  _lastEvalTick = Game.time;
+/** Gate: room headroom AND a mature, energy-rich base. */
+function expansionUnlocked(base: Room): boolean {
+  if (ownedRoomCount() >= Game.gcl.level) return false; // claim limit = GCL
+  if (!base.controller || base.controller.level < 4) return false;
+  if (!base.storage) return false;
+  return true;
+}
 
+/** Record intel about a visible room (called by scouts/claimers and the manager). */
+export function recordIntel(room: Room): void {
   const mem = ensureMem();
-
-  // If we can claim more rooms, prepare scouting/claiming.
-  if (ownedRoomCount() < maxRooms()) {
-    if (mem.state === "idle") {
-      // Start scouting
-      transition(mem, "scouting");
-      mem.scoutDispatched = false;
-    }
-
-    if (mem.state === "scouting") {
-      // Try to pick a room with existing intel
-      if (mem.targetRoom && hasIntel(mem.targetRoom)) {
-        transition(mem, "claiming");
-        mem.claimerSpawned = false;
-      } else {
-        // Need to scout — pick the first adjacent room we haven't scouted
-        for (const spawnName in Game.spawns) {
-          const spawn = Game.spawns[spawnName];
-          const adj = adjacentRooms(spawn.room.name);
-          for (const adjRoom of adj) {
-            if (!hasIntel(adjRoom) && !mem.scoutDispatched) {
-              mem.targetRoom = adjRoom;
-              if (!hasActiveScout()) {
-                mem.scoutDispatched = true;
-                _cachedSpawnRequest = {
-                  role: "scout",
-                  body: [MOVE],
-                  priority: 3,
-                };
-                return _cachedSpawnRequest;
-              }
-            }
-          }
-        }
-        // All adjacent rooms have intel — pick best
-        for (const spawnName in Game.spawns) {
-          const spawn = Game.spawns[spawnName];
-          const best = pickTarget(spawn.room.name);
-          if (best) {
-            mem.targetRoom = best;
-            transition(mem, "claiming");
-            mem.claimerSpawned = false;
-            break;
-          }
-        }
-      }
-    }
-
-    if (mem.state === "claiming") {
-      if (mem.targetRoom && !mem.claimerSpawned && !hasActiveClaimer()) {
-        // Check if the room is already ours (maybe another spawn claimed it)
-        const room = Game.rooms[mem.targetRoom];
-        if (room && room.controller && room.controller.my) {
-          transition(mem, "bootstrapping");
-          _cachedSpawnRequest = null;
-          return null;
-        }
-
-        mem.claimerSpawned = true;
-        _cachedSpawnRequest = {
-          role: "claimer",
-          body: [CLAIM, MOVE],
-          priority: 3,
-        };
-        return _cachedSpawnRequest;
-      }
-
-      // If claimer is active, wait
-      if (hasActiveClaimer()) {
-        _cachedSpawnRequest = null;
-        return null;
-      }
-
-      // If room is now ours, transition to bootstrapping
-      if (mem.targetRoom) {
-        const room = Game.rooms[mem.targetRoom];
-        if (room && room.controller && room.controller.my) {
-          transition(mem, "bootstrapping");
-        }
-      }
-    }
-
-    if (mem.state === "bootstrapping") {
-      // Bootstrapping: the normal spawn pipeline handles this.
-      // Just reset when we want to expand again.
-      if (ownedRoomCount() >= maxRooms()) {
-        transition(mem, "idle");
-        mem.targetRoom = undefined;
-      }
-    }
-  }
-
-  _cachedSpawnRequest = null;
-  return null;
+  const ctrl = room.controller;
+  const keeperLairs = room.find(FIND_HOSTILE_STRUCTURES, {
+    filter: (s) => s.structureType === STRUCTURE_KEEPER_LAIR,
+  });
+  const intel: RoomIntel = {
+    sources: room.find(FIND_SOURCES).length,
+    owner: ctrl && ctrl.owner ? ctrl.owner.username : undefined,
+    reserved: !!(ctrl && ctrl.reservation),
+    hostile: room.find(FIND_HOSTILE_CREEPS).length > 0 || keeperLairs.length > 0,
+    lastSeen: Game.time,
+  };
+  mem.intel[room.name] = intel;
+  mem.scoutedRooms[room.name] = Game.time;
 }
 
-/**
- * Attach target room to a newly spawned claimer or scout.
- * Called by the spawn manager after a successful spawn.
- */
-export function onExpansionSpawn(
-  role: CreepRole,
-  creepName: string,
-): void {
+/** Pick the best adjacent room to claim from cached intel. */
+function pickTarget(base: Room): string | null {
   const mem = ensureMem();
-  const creep = Game.creeps[creepName];
-  if (!creep) return;
-
-  if (role === "claimer" && mem.targetRoom) {
-    creep.memory.targetRoom = mem.targetRoom;
-    creep.memory.claimed = false;
+  let best: string | null = null;
+  let bestScore = 0;
+  for (const name of adjacentRooms(base.name)) {
+    const intel = mem.intel[name];
+    if (!intel || Game.time - intel.lastSeen > INTEL_TTL) continue;
+    if (intel.owner || intel.reserved || intel.hostile) continue;
+    if (intel.sources === 0) continue;
+    const score = intel.sources * 100;
+    if (score > bestScore) {
+      bestScore = score;
+      best = name;
+    }
   }
-
-  if (role === "scout" && mem.targetRoom) {
-    creep.memory.targetRoom = mem.targetRoom;
-  }
+  return best;
 }
 
-/**
- * Record scout intel. Called by the scout role when it enters a room.
- */
-export function recordScoutIntel(roomName: string): void {
-  const mem = ensureMem();
-  if (!mem.scoutedRooms) mem.scoutedRooms = {};
-  mem.scoutedRooms[roomName] = Game.time;
+function globalRoleCount(role: CreepRole): number {
+  return buildCensus().global[role] || 0;
 }
 
-/**
- * Run expansion-related maintenance each tick.
- * Called from the main loop.
- */
+function pioneersFor(targetRoom: string): number {
+  let n = 0;
+  for (const name in Game.creeps) {
+    const c = Game.creeps[name];
+    if (c.memory.role === "pioneer" && c.memory.targetRoom === targetRoom) n++;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------------------
+// State machine
+// ---------------------------------------------------------------------------
+
 export function runExpansionManager(): void {
   const mem = ensureMem();
+  const base = pickBaseRoom();
 
-  // Transition claimed rooms to bootstrapping
-  if (mem.state === "claiming" && mem.targetRoom) {
-    const room = Game.rooms[mem.targetRoom];
-    if (room && room.controller && room.controller.my) {
-      transition(mem, "bootstrapping");
+  // Dormant / gated off: keep state clean so nothing can wedge.
+  if (!base || !expansionUnlocked(base)) {
+    if (mem.state !== "idle") {
+      mem.state = "idle";
+      mem.targetRoom = undefined;
     }
+    return;
   }
 
-  // If bootstrapping is done (we own the max rooms), reset
-  if (mem.state === "bootstrapping") {
-    if (ownedRoomCount() >= maxRooms()) {
-      transition(mem, "idle");
-      mem.targetRoom = undefined;
-      mem.claimerSpawned = false;
-      mem.scoutDispatched = false;
+  // Opportunistically record intel on any visible adjacent rooms.
+  for (const name of adjacentRooms(base.name)) {
+    const r = Game.rooms[name];
+    if (r) recordIntel(r);
+  }
+
+  // Self-heal: a target that isn't adjacent to the base (legacy corruption)
+  // is invalid unless we're already bootstrapping it.
+  if (mem.targetRoom && mem.state !== "bootstrapping" && !adjacentRooms(base.name).includes(mem.targetRoom)) {
+    mem.targetRoom = undefined;
+    mem.state = "idle";
+  }
+
+  switch (mem.state) {
+    case "idle":
+      mem.state = "scouting";
+      break;
+
+    case "scouting": {
+      const adj = adjacentRooms(base.name);
+      const haveAll = adj.every((r) => mem.intel[r] && Game.time - mem.intel[r].lastSeen < INTEL_TTL);
+      if (haveAll) {
+        const target = pickTarget(base);
+        if (target) {
+          mem.targetRoom = target;
+          mem.state = "claiming";
+        } else {
+          mem.state = "idle"; // nothing worth claiming nearby; retry later
+        }
+      }
+      break;
     }
+
+    case "claiming": {
+      const room = mem.targetRoom ? Game.rooms[mem.targetRoom] : undefined;
+      if (room && room.controller && room.controller.my) mem.state = "bootstrapping";
+      break;
+    }
+
+    case "bootstrapping": {
+      const room = mem.targetRoom ? Game.rooms[mem.targetRoom] : undefined;
+      if (!room || !room.controller || !room.controller.my) {
+        mem.state = "idle";
+        mem.targetRoom = undefined;
+        break;
+      }
+      if (room.find(FIND_MY_SPAWNS).length > 0) {
+        // New room stands on its own — done expanding for now.
+        mem.state = "idle";
+        mem.targetRoom = undefined;
+      }
+      break;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Spawn requests (consumed by the spawn manager, base room only)
+// ---------------------------------------------------------------------------
+
+export function getExpansionSpawnRequest(room: Room, data: RoomData): SpawnRequest | null {
+  const mem = ensureMem();
+  const base = pickBaseRoom();
+  if (!base || room.name !== base.name || !expansionUnlocked(base)) return null;
+
+  switch (mem.state) {
+    case "scouting":
+      if (globalRoleCount("scout") === 0) {
+        return { role: "scout", body: scoutBody(), memory: { role: "scout", homeRoom: base.name } };
+      }
+      return null;
+
+    case "claiming": {
+      if (!mem.targetRoom) return null;
+      const target = Game.rooms[mem.targetRoom];
+      if (target && target.controller && target.controller.my) return null;
+      if (globalRoleCount("claimer") === 0) {
+        return {
+          role: "claimer",
+          body: claimerBody(data.energyCapacity),
+          memory: { role: "claimer", homeRoom: base.name, targetRoom: mem.targetRoom },
+        };
+      }
+      return null;
+    }
+
+    case "bootstrapping": {
+      if (!mem.targetRoom) return null;
+      if (pioneersFor(mem.targetRoom) < PIONEERS_PER_ROOM) {
+        return {
+          role: "pioneer",
+          body: pioneerBody(data.energyCapacity),
+          memory: { role: "pioneer", homeRoom: base.name, targetRoom: mem.targetRoom },
+        };
+      }
+      return null;
+    }
+
+    default:
+      return null;
   }
 }

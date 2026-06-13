@@ -1,13 +1,9 @@
 /**
- * Cache v0.1.0 — Upgrader role.
+ * Cache — Upgrader role.
  *
- * Withdraws energy from the best available source (dropped → storage/container
- * → spawn/extensions) and upgrades the room controller.
- *
- * CPU optimisations:
- *   - Path caching (25-tick reuse) avoids per-tick pathfinding.
- *   - Cached room structure lookups replace findClosestByPath.
- *   - findClosestByRange used for final source selection within a room.
- *   - Dropped energy checked first (cheapest pickup, zero withdraw cost).
+ * Fills from the controller container (its dedicated supply) when present, then
+ * the general energy pool, and upgrades the room controller. Controller upgrades
+ * are what earn both RCL and GCL progress, so a healthy economy keeps several
+ * upgraders busy — the target count scales with surplus (storage) energy.
  */
 export declare function runUpgrader(creep: Creep): void;

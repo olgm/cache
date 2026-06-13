@@ -1,95 +1,95 @@
 "use strict";
 /**
- * Cache v0.0.5 — Main loop.
+ * Cache v0.3.0 — Main loop.
  *
- * Called every tick by the Screeps runtime. Orchestrates:
- *   1. Cache & census flush
- *   2. Expansion & remote-mining maintenance
- *   3. Spawn management (includes expansion/remote requests)
- *   4. Creep role dispatch
+ * Called every tick by the Screeps runtime. Order of operations:
+ *   1. Memory hygiene (prune dead creeps; one-time schema migration).
+ *   2. Managers: expansion → construction → towers → spawning.
+ *   3. Creep role dispatch.
+ *   4. Telemetry (Memory.stats) LAST, so SPARSE observes this tick's real state.
  *
- * Catches all errors to prevent a single failure from crashing the tick.
+ * Every subsystem and every creep is wrapped in try/catch that LOGS to the
+ * console (it never swallows silently) — SPARSE diagnoses partly off console
+ * errors, so a crashing subsystem must be visible, not invisible.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.loop = loop;
-const cache_1 = require("./utils/cache");
-const creepCensus_1 = require("./utils/creepCensus");
-const spawnManager_1 = require("./spawnManager");
+const spawning_1 = require("./kernel/spawning");
+const construction_1 = require("./kernel/construction");
+const towers_1 = require("./kernel/towers");
 const expansion_1 = require("./expansion");
-const remoteMining_1 = require("./remoteMining");
-const harvester_1 = require("./roles/harvester");
-const builder_1 = require("./roles/builder");
-const upgrader_1 = require("./roles/upgrader");
-const claimer_1 = require("./roles/claimer");
-const scout_1 = require("./roles/scout");
-const remoteHarvester_1 = require("./roles/remoteHarvester");
-const remoteHauler_1 = require("./roles/remoteHauler");
 const stats_1 = require("./stats");
-/** Map role identifiers to their runner function. */
+const miner_1 = require("./roles/miner");
+const hauler_1 = require("./roles/hauler");
+const harvester_1 = require("./roles/harvester");
+const upgrader_1 = require("./roles/upgrader");
+const builder_1 = require("./roles/builder");
+const defender_1 = require("./roles/defender");
+const scout_1 = require("./roles/scout");
+const claimer_1 = require("./roles/claimer");
+const pioneer_1 = require("./roles/pioneer");
 const ROLE_RUNNERS = {
+    miner: miner_1.runMiner,
+    hauler: hauler_1.runHauler,
     harvester: harvester_1.runHarvester,
-    builder: builder_1.runBuilder,
     upgrader: upgrader_1.runUpgrader,
-    claimer: claimer_1.runClaimer,
+    builder: builder_1.runBuilder,
+    defender: defender_1.runDefender,
     scout: scout_1.runScout,
-    remoteHarvester: remoteHarvester_1.runRemoteHarvester,
-    remoteHauler: remoteHauler_1.runRemoteHauler,
+    claimer: claimer_1.runClaimer,
+    pioneer: pioneer_1.runPioneer,
 };
-/**
- * Main loop function — the Screeps runtime calls this every tick.
- */
+/** Bumped to trigger a one-time Memory migration on deploy. */
+const SCHEMA_VERSION = 3;
 function loop() {
-    // 1. Invalidate the per-tick caches
-    (0, cache_1.flushCache)();
-    (0, creepCensus_1.flushCensus)();
-    // 2. Build creep census once (single Game.creeps pass) before
-    //    any module asks for it — avoids lazy builds mid-tick.
-    (0, creepCensus_1.ensureCensus)();
-    // 3. Run expansion maintenance (state transitions, intel)
-    try {
-        (0, expansion_1.runExpansionManager)();
-    }
-    catch (e) {
-        // Swallow: an expansion error shouldn't kill the rest of the tick.
-    }
-    // 4. Run remote-mining maintenance (source evaluation, op lifecycle)
-    try {
-        (0, remoteMining_1.runRemoteMiningManager)();
-    }
-    catch (e) {
-        // Swallow: a remote-mining error shouldn't kill the rest of the tick.
-    }
-    // 5. Run spawn management (decide what to spawn this tick)
-    try {
-        (0, spawnManager_1.runSpawnManager)();
-    }
-    catch (e) {
-        // Swallow: a spawn error shouldn't kill the rest of the tick.
-    }
-    // 6. Dispatch each creep to its role runner
-    //    NOTE: This is a second Game.creeps pass. The census above
-    //    already did one pass. This second pass is for role dispatch
-    //    which can't be merged because spawn/expansion managers need
-    //    the census data *before* creep actions.
+    var _a;
+    cleanupCreepMemory();
+    migrate();
+    runSubsystem("expansion", expansion_1.runExpansionManager);
+    runSubsystem("construction", construction_1.runConstruction);
+    runSubsystem("towers", towers_1.runTowers);
+    runSubsystem("spawn", spawning_1.runSpawnManager);
     for (const name in Game.creeps) {
         const creep = Game.creeps[name];
+        const role = creep.memory.role;
+        const runner = role ? ROLE_RUNNERS[role] : undefined;
+        if (!runner)
+            continue;
         try {
-            const role = creep.memory.role;
-            if (role && ROLE_RUNNERS[role]) {
-                ROLE_RUNNERS[role](creep);
-            }
+            runner(creep);
         }
         catch (e) {
-            // Swallow: a single creep error shouldn't kill the rest of the tick.
+            console.log(`CACHE role ${role} (${name}) error: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
         }
     }
-    // 7. Write telemetry LAST so SPARSE observes this tick's real state — the
-    //    overseer is blind without a fresh Memory.stats every tick.
+    runSubsystem("stats", stats_1.writeStats);
+}
+/** Delete Memory.creeps entries whose creep no longer exists (leak fix). */
+function cleanupCreepMemory() {
+    for (const name in Memory.creeps) {
+        if (!(name in Game.creeps))
+            delete Memory.creeps[name];
+    }
+}
+/** One-time cleanup of removed subsystems and corrupt legacy state. */
+function migrate() {
+    if (Memory.version === SCHEMA_VERSION)
+        return;
+    // Remote-mining was removed — drop its (inert) memory.
+    delete Memory.remoteMining;
+    // The legacy expansion state was wedged (claiming an unreachable room); reset
+    // it so the gated manager re-initialises a clean default.
+    Memory.expansion = undefined;
+    Memory.version = SCHEMA_VERSION;
+    console.log(`CACHE: migrated Memory to schema v${SCHEMA_VERSION}`);
+}
+function runSubsystem(label, fn) {
+    var _a;
     try {
-        (0, stats_1.writeStats)();
+        fn();
     }
     catch (e) {
-        console.log("CACHE writeStats error: " + (e && e.message));
+        console.log(`CACHE ${label} error: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
     }
 }
 //# sourceMappingURL=main.js.map
