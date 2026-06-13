@@ -16,6 +16,7 @@ export type CreepRole =
   | "upgrader"
   | "claimer"
   | "scout"
+  | "remoteScout"
   | "remoteHarvester"
   | "remoteHauler";
 
@@ -84,11 +85,18 @@ export interface RemoteOp {
 
 export interface RemoteMiningMemory {
   ops: Record<string, RemoteOp>; // keyed by remote room name
+  /** Cached source info from adjacent rooms, populated when visible.
+   *  Persists across ticks so ops can start even when the room is dark. */
+  knownSources: Record<string, RemoteSourceInfo[]>; // roomName → sources
+  /** Tick when the last remote scout was dispatched. */
+  lastScoutTick: number;
 }
 
 export function defaultRemoteMiningMemory(): RemoteMiningMemory {
   return {
     ops: {},
+    knownSources: {},
+    lastScoutTick: 0,
   };
 }
 

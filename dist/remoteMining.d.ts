@@ -1,5 +1,5 @@
 /**
- * Cache v0.1.3 — Remote-mining manager.
+ * Cache v0.2.0 — Remote-mining manager.
  *
  * Drives exploitation of sources in adjacent (non-owned) rooms:
  *   1. Evaluate adjacent rooms for viable remote sources (use expansion intel).
@@ -10,8 +10,13 @@
  *
  * State persisted in Memory.remoteMining.
  *
- * v0.1.3 — Productivity-aware: deactivates ops that haven't hauled in 1500
- * ticks. Uses creep census instead of per-function O(n) scans.
+ * v0.2.0 — Self-sufficient scouting:
+ *   - Caches source info (knownSources) whenever an adjacent room is visible,
+ *     so ops can start from cached data even when the room is dark.
+ *   - Dispatches a cheap 1-MOVE remoteScout when no intel exists and we
+ *     have spare op capacity, decoupling remote mining from expansion scouts.
+ *   - Uses knownSources in findBestRemoteSource as a fallback when the room
+ *     isn't currently visible.
  *
  * Design constraints:
  *   - Only adjacent rooms (range 1) for now — keeps pathing cheap.

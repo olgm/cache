@@ -17,6 +17,8 @@ function defaultExpansionMemory() {
 function defaultRemoteMiningMemory() {
     return {
         ops: {},
+        knownSources: {},
+        lastScoutTick: 0,
     };
 }
 // --- Body part costs (taken from Screeps constants) ---
