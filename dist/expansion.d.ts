@@ -5,7 +5,8 @@
  * old version wedged itself (claiming an unreachable room at GCL1, claimer never
  * able to claim); this one is hard-gated and self-validating:
  *
- *   scout gate:   ownedRooms < GCL AND RCL >= 3 (map neighbours early).
+ *   scout gate:   RCL >= 3 (map neighbours early — cheap prep, runs in parallel
+ *                 with upgrading; intel is ready the moment GCL unlocks).
  *   claim gate:   ownedRooms < GCL AND RCL >= 4 AND storage (mature surplus).
  *
  * Flow: idle → scouting (a scout maps adjacent rooms) → claiming (a claimer

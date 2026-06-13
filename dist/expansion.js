@@ -6,7 +6,8 @@
  * old version wedged itself (claiming an unreachable room at GCL1, claimer never
  * able to claim); this one is hard-gated and self-validating:
  *
- *   scout gate:   ownedRooms < GCL AND RCL >= 3 (map neighbours early).
+ *   scout gate:   RCL >= 3 (map neighbours early — cheap prep, runs in parallel
+ *                 with upgrading; intel is ready the moment GCL unlocks).
  *   claim gate:   ownedRooms < GCL AND RCL >= 4 AND storage (mature surplus).
  *
  * Flow: idle → scouting (a scout maps adjacent rooms) → claiming (a claimer
@@ -59,10 +60,8 @@ function pickBaseRoom() {
     }
     return best;
 }
-/** Gate: room headroom AND an established colony — scouting only. */
+/** Gate: RCL ≥ 3 — scout early so intel is ready when GCL unlocks expansion. */
 function scoutingUnlocked(base) {
-    if (ownedRoomCount() >= Game.gcl.level)
-        return false; // claim limit = GCL
     if (!base.controller || base.controller.level < 3)
         return false;
     return true;
@@ -157,8 +156,13 @@ function runExpansionManager() {
     }
     switch (mem.state) {
         case "idle":
-            if (canScout)
-                mem.state = "scouting";
+            // Only enter scouting when we lack fresh intel on ≥1 adjacent room.
+            if (canScout) {
+                const adj = adjacentRooms(base.name);
+                const haveAll = adj.length > 0 && adj.every((r) => mem.intel[r] && Game.time - mem.intel[r].lastSeen < INTEL_TTL);
+                if (!haveAll)
+                    mem.state = "scouting";
+            }
             break;
         case "scouting": {
             const adj = adjacentRooms(base.name);
@@ -216,14 +220,20 @@ function runExpansionManager() {
 function getExpansionSpawnRequest(room, data) {
     const mem = ensureMem();
     const base = pickBaseRoom();
-    if (!base || room.name !== base.name || !expansionUnlocked(base))
+    if (!base || room.name !== base.name)
+        return null;
+    // Scout: allowed as soon as scoutingUnlocked, independent of the expansion gate
+    // (scouting is cheap prep; waiting until the gate opens wastes thousands of ticks).
+    if (mem.state === "scouting") {
+        if (globalRoleCount("scout") === 0) {
+            return { role: "scout", body: (0, config_1.scoutBody)(), memory: { role: "scout", homeRoom: base.name } };
+        }
+        return null;
+    }
+    // All other expansion roles (claimer, pioneer) require the full expansion gate.
+    if (!expansionUnlocked(base))
         return null;
     switch (mem.state) {
-        case "scouting":
-            if (globalRoleCount("scout") === 0) {
-                return { role: "scout", body: (0, config_1.scoutBody)(), memory: { role: "scout", homeRoom: base.name } };
-            }
-            return null;
         case "claiming": {
             if (!mem.targetRoom)
                 return null;

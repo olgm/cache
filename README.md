@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-13 22:37 UTC — Prioritize controller upgrades to accelerate GCL growth
+
+Shift worker energy allocation toward room controller upgrading to increase Global Control Level from 1 and unlock expansion opportunities.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** expansion weakness (`expansion`)
+- **Eval score:** 68/100
+
+**Why:** Global Control Level is low (gcl=1); prioritize controller upgrading to expand.
+
+**Issues addressed:**
+- eval: gcl sub-score below healthy
+
 ### 2026-06-13 21:37 UTC — Prioritize controller upgrading to raise GCL
 
 Shift creep task allocation to invest more energy into room controller upgrading so that Global Control Level climbs out of its current low plateau.
