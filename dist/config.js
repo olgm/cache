@@ -284,12 +284,17 @@ function roleTargets(data, current) {
             else if (totalE > totalCap * 0.6)
                 upg = 2;
         }
-        // GCL push (reduced during bootstrap to keep builders fed, but not zero —
-        // a GCL-1 colony needs at least 2 upgraders to make any headway).
+        // GCL push: at GCL 1-2 every control point is precious — expansion to a
+        // second room is gated on GCL, so we run more upgraders than the bootstrap
+        // economy would otherwise tolerate.  Builders now have lower spawn priority
+        // (5 vs upgrader 4), so the extra upgraders are spawned first and builders
+        // fill in behind them.  The worst case is slower construction, but delayed
+        // containers are still preferable to a stalled GCL that blocks expansion
+        // entirely.
         if (Game.gcl.level === 1)
-            upg = Math.max(upg, 2);
+            upg = Math.max(upg, 3);
         else if (Game.gcl.level === 2)
-            upg = Math.max(upg, 2);
+            upg = Math.max(upg, 3);
         targets.upgrader = upg;
     }
     else {
@@ -391,8 +396,8 @@ exports.ROLE_PRIORITY = {
     hauler: 2,
     defender: 2, // urgent when present
     remoteHarvester: 3,
-    builder: 4, // before upgrader: builds source containers to exit bootstrap ASAP
-    upgrader: 5,
+    upgrader: 4, // before builder: controller progress gates RCL & GCL — every tick matters
+    builder: 5,
     pioneer: 6,
     claimer: 7,
     scout: 8,
