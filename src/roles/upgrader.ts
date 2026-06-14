@@ -21,10 +21,12 @@ export function runUpgrader(creep: Creep): void {
   const ctrl = creep.room.controller;
   if (!ctrl || !ctrl.my) return;
 
-  if (creep.memory.working && creep.store[RESOURCE_ENERGY] === 0) creep.memory.working = false;
-  else if (!creep.memory.working && creep.store.getFreeCapacity() === 0) creep.memory.working = true;
-
-  if (creep.memory.working) {
+  // Upgrade whenever the creep has energy; gather only when empty.
+  // The old full/empty toggle could trap upgraders in a futile gather loop
+  // when energy was scarce — they'd never reach full carry and never upgrade.
+  // The simple "upgrade on any energy" pattern ensures every joule picked up
+  // is converted to control points without delay.
+  if (creep.store[RESOURCE_ENERGY] > 0) {
     if (creep.upgradeController(ctrl) === ERR_NOT_IN_RANGE) travel(creep, ctrl, 3);
     return;
   }

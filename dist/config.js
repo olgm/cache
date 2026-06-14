@@ -197,11 +197,32 @@ function roleTargets(data, current) {
     // BOOTSTRAP EXCEPTION: with no source container yet (no static mining), the
     // colony cannot sustain a crowd of upgraders — they compete with builders for
     // the same scarce energy AND sit ahead of them in spawn priority, starving the
-    // very construction (the source containers) that ends the bootstrap. So hold
-    // upgraders at 1 until a container exists; the aggressive scaling below resumes
-    // once static mining is up and there is real surplus to convert.
+    // very construction (the source containers) that ends the bootstrap.
+    //
+    // However, a hard cap of 1 is too conservative: at RCL 3 with full extensions
+    // there is real surplus that should become control points.  Scale the bootstrap
+    // upgrader count by the fill level of the spawn+extensions buffer — allowing up
+    // to 3 when energy is flooding (>90 %), down to 1 when it's tight (≤60 %).
+    // The GCL push still applies (at reduced strength) so GCL 1 colonies aren't
+    // trapped in a single-upgrader rut that starves GCL progress.
     if (withContainer === 0) {
-        targets.upgrader = 1;
+        let upg = 1;
+        const spawnExt = [...data.spawns, ...data.extensions];
+        const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY), 0);
+        const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
+        if (totalCap > 0) {
+            if (totalE > totalCap * 0.9)
+                upg = 3;
+            else if (totalE > totalCap * 0.6)
+                upg = 2;
+        }
+        // GCL push (reduced during bootstrap to keep builders fed, but not zero —
+        // a GCL-1 colony needs at least 2 upgraders to make any headway).
+        if (Game.gcl.level === 1)
+            upg = Math.max(upg, 2);
+        else if (Game.gcl.level === 2)
+            upg = Math.max(upg, 2);
+        targets.upgrader = upg;
     }
     else {
         let upg = 1;
