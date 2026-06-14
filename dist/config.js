@@ -193,7 +193,17 @@ function roleTargets(data, current) {
     // faster GCL grows and the sooner we can expand to a second room.  At low
     // RCL energy production often outstrips spawn+extension sink capacity; we
     // detect that waste and route it into the controller.
-    {
+    //
+    // BOOTSTRAP EXCEPTION: with no source container yet (no static mining), the
+    // colony cannot sustain a crowd of upgraders — they compete with builders for
+    // the same scarce energy AND sit ahead of them in spawn priority, starving the
+    // very construction (the source containers) that ends the bootstrap. So hold
+    // upgraders at 1 until a container exists; the aggressive scaling below resumes
+    // once static mining is up and there is real surplus to convert.
+    if (withContainer === 0) {
+        targets.upgrader = 1;
+    }
+    else {
         let upg = 1;
         if (rcl >= 8) {
             upg = 1; // capped at 15 energy/tick — one fat upgrader is enough
