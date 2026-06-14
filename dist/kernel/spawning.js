@@ -107,9 +107,20 @@ function pickEconomyRole(targets, census, home, reserved) {
     return null;
 }
 function trySpawnRole(spawn, room, data, role, census, reserved, reservedSources) {
-    const body = (0, config_1.bodyForRole)(role, data.energyCapacity, data.rcl);
+    // Bootstrap regime: until a source container exists (static mining), the colony
+    // often cannot fill its full energy capacity — yet insisting on a capacity-sized
+    // body means the next economy creep (critically, a BUILDER) never becomes
+    // affordable, so the source containers never get built and the bootstrap never
+    // ends. While bootstrapping, size to energy ON HAND (like the emergency path) so
+    // the workforce keeps growing; revert to capacity-sized creeps for efficiency
+    // once static mining is online.
+    const bootstrapping = data.sources.every((s) => !s.container);
+    const budget = bootstrapping
+        ? Math.max(types_1.BODY_COST.work + types_1.BODY_COST.carry + types_1.BODY_COST.move, data.energyAvailable)
+        : data.energyCapacity;
+    const body = (0, config_1.bodyForRole)(role, budget, data.rcl);
     if (data.energyAvailable < bodyCost(body))
-        return false; // wait for a full-size creep
+        return false; // can't afford even this
     const memory = { role, homeRoom: room.name };
     if (role === "miner") {
         const sid = pickFreeContainerSource(data, census, reservedSources);

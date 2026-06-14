@@ -126,8 +126,19 @@ function trySpawnRole(
   reserved: Record<string, number>,
   reservedSources: Set<string>,
 ): boolean {
-  const body = bodyForRole(role, data.energyCapacity, data.rcl);
-  if (data.energyAvailable < bodyCost(body)) return false; // wait for a full-size creep
+  // Bootstrap regime: until a source container exists (static mining), the colony
+  // often cannot fill its full energy capacity — yet insisting on a capacity-sized
+  // body means the next economy creep (critically, a BUILDER) never becomes
+  // affordable, so the source containers never get built and the bootstrap never
+  // ends. While bootstrapping, size to energy ON HAND (like the emergency path) so
+  // the workforce keeps growing; revert to capacity-sized creeps for efficiency
+  // once static mining is online.
+  const bootstrapping = data.sources.every((s) => !s.container);
+  const budget = bootstrapping
+    ? Math.max(BODY_COST.work + BODY_COST.carry + BODY_COST.move, data.energyAvailable)
+    : data.energyCapacity;
+  const body = bodyForRole(role, budget, data.rcl);
+  if (data.energyAvailable < bodyCost(body)) return false; // can't afford even this
 
   const memory: CreepMemory = { role, homeRoom: room.name };
 

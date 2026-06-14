@@ -72,13 +72,22 @@ function runBuilder(creep) {
 }
 function pickSite(creep) {
     var _a;
-    const sites = (0, roomData_1.getRoomData)(creep.room).constructionSites;
+    const data = (0, roomData_1.getRoomData)(creep.room);
+    const sites = data.constructionSites;
     if (sites.length === 0)
         return null;
+    // BOOTSTRAP: until the room has a source container, build containers FIRST —
+    // ahead of extensions. Extensions raise energyCapacity, which (with a depleted
+    // workforce) just deepens the "can't fill the spawn" hole; a source container
+    // instead unlocks static mining and a steady energy stream. Once any container
+    // exists, fall back to the normal economy-first order (extensions compound).
+    const bootstrapping = data.sources.every((s) => !s.container);
     let best = null;
     let bestKey = Infinity;
     for (const s of sites) {
-        const prio = (_a = BUILD_PRIORITY[s.structureType]) !== null && _a !== void 0 ? _a : 9;
+        let prio = (_a = BUILD_PRIORITY[s.structureType]) !== null && _a !== void 0 ? _a : 9;
+        if (bootstrapping && s.structureType === STRUCTURE_CONTAINER)
+            prio = 0.5; // before extensions
         // Tie-break by remaining work then range, folded into one comparable key.
         const key = prio * 1e6 + (s.progressTotal - s.progress);
         if (key < bestKey) {
