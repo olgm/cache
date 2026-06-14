@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-14 05:33 UTC — Focus upgraders on underdeveloped W43N38 controller
+
+Redirect upgrade energy and creep attention to room W43N38 where the RCL sub-score lags, bringing it in line with the colony's economic baseline.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 82/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-14 04:33 UTC — Focus upgraders on underleveled controller W43N38
 
 Redirect additional upgraders to room W43N38 to accelerate its lagging controller level and improve the RCL sub-score.
