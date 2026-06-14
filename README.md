@@ -42,6 +42,21 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-14 09:35 UTC — Add harvesters and haulers to W43N38
+
+Deploy additional harvester and hauler creeps in room W43N38 to increase low energy throughput and boost the economy sub-score.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** logistics weakness (`logistics`)
+- **Eval score:** 63/100
+
+**Why:** Room W43N38 energy throughput is low; add harvesters/haulers or sources.
+
+**Issues addressed:**
+- eval: energy sub-score below healthy
+- heuristic: economy throughput
+
 ### 2026-06-14 08:44 UTC — Prioritize W43N38 controller upgraders for early RCL growth
 
 Shift creeps toward dedicated upgrading in room W43N38 to improve its underdeveloped controller and lift the RCL sub-score.
