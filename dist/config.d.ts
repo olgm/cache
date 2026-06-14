@@ -16,8 +16,19 @@ import { RoomData } from "./utils/roomData";
 export declare function minerBody(budget: number): BodyPartConstant[];
 /** Hauler: CARRY/MOVE at a 2:1 ratio (assumes roads; half-speed when loaded off-road). */
 export declare function haulerBody(budget: number): BodyPartConstant[];
-/** Generalist worker (harvester bootstrap / builder): balanced, budget-filling. */
+/** Generalist worker (builder): balanced, budget-filling. */
 export declare function workerBody(budget: number, maxRepeat: number): BodyPartConstant[];
+/**
+ * Harvester body — heavy CARRY for bootstrap efficiency.
+ *
+ * During bootstrap (no source containers), harvesters mine AND haul — every
+ * trip to the spawn wastes ticks walking, so carrying more per trip directly
+ * raises the room's energy throughput.  The base unit [WORK, CARRY, CARRY, MOVE]
+ * (250e) gives a 2:1 carry-to-work ratio; leftover budget fills extra WORK
+ * (faster mining → faster refill → more frequent trips) then CARRY if WORK
+ * would exceed source regen rate.
+ */
+export declare function harvesterBody(budget: number): BodyPartConstant[];
 /**
  * Upgrader: balanced WORK:CARRY for high uptime. Each unit is 1 WORK + 1 CARRY
  * + 1 MOVE (200e), giving a 1:1 work-to-carry ratio that keeps the creep

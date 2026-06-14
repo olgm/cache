@@ -98,7 +98,7 @@ function fillWork(body: BodyPartConstant[], leftover: number): BodyPartConstant[
   return body;
 }
 
-/** Generalist worker (harvester bootstrap / builder): balanced, budget-filling. */
+/** Generalist worker (builder): balanced, budget-filling. */
 export function workerBody(budget: number, maxRepeat: number): BodyPartConstant[] {
   const unitCostV = unitCost([WORK, CARRY, MOVE]);
   const n = Math.max(1, Math.min(maxRepeat, Math.floor(budget / unitCostV)));
@@ -106,6 +106,39 @@ export function workerBody(budget: number, maxRepeat: number): BodyPartConstant[
   // Only fill when the BUDGET (not maxRepeat) was the binding constraint, so
   // size-capped roles stay balanced.
   return n < maxRepeat ? fillWork(body, budget - n * unitCostV) : body;
+}
+
+/**
+ * Harvester body — heavy CARRY for bootstrap efficiency.
+ *
+ * During bootstrap (no source containers), harvesters mine AND haul — every
+ * trip to the spawn wastes ticks walking, so carrying more per trip directly
+ * raises the room's energy throughput.  The base unit [WORK, CARRY, CARRY, MOVE]
+ * (250e) gives a 2:1 carry-to-work ratio; leftover budget fills extra WORK
+ * (faster mining → faster refill → more frequent trips) then CARRY if WORK
+ * would exceed source regen rate.
+ */
+export function harvesterBody(budget: number): BodyPartConstant[] {
+  const unit: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE]; // 250e
+  const uc = unitCost(unit); // = 250
+  const n = Math.max(1, Math.min(5, Math.floor(budget / uc)));
+  const body: BodyPartConstant[] = [];
+  for (let i = 0; i < n; i++) body.push(...unit);
+
+  let left = budget - n * uc;
+  // Fill leftover: WORK first (mining speed), then CARRY.
+  let workParts = n; // each unit has 1 WORK
+  while (left >= BODY_COST.work && body.length < MAX_PARTS && workParts < 5) {
+    body.push(WORK);
+    left -= BODY_COST.work;
+    workParts++;
+  }
+  while (left >= BODY_COST.carry && body.length < MAX_PARTS) {
+    body.push(CARRY);
+    left -= BODY_COST.carry;
+  }
+  if (left >= BODY_COST.move && body.length < MAX_PARTS) body.push(MOVE);
+  return body;
 }
 
 /**
@@ -329,7 +362,7 @@ export function bodyForRole(role: CreepRole, budget: number, rcl: number): BodyP
     case "hauler":
       return haulerBody(budget);
     case "harvester":
-      return workerBody(budget, 5);
+      return harvesterBody(budget);
     case "builder":
       return workerBody(budget, 5);
     case "upgrader":
@@ -354,8 +387,8 @@ export const ROLE_PRIORITY: Record<CreepRole, number> = {
   hauler: 2,
   defender: 2, // urgent when present
   remoteHarvester: 3,
-  upgrader: 4,
-  builder: 5,
+  builder: 4,  // before upgrader: builds source containers to exit bootstrap ASAP
+  upgrader: 5,
   pioneer: 6,
   claimer: 7,
   scout: 8,

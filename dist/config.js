@@ -12,6 +12,7 @@ exports.ROLE_PRIORITY = void 0;
 exports.minerBody = minerBody;
 exports.haulerBody = haulerBody;
 exports.workerBody = workerBody;
+exports.harvesterBody = harvesterBody;
 exports.upgraderBody = upgraderBody;
 exports.defenderBody = defenderBody;
 exports.scoutBody = scoutBody;
@@ -106,7 +107,7 @@ function fillWork(body, leftover) {
         body.push(MOVE);
     return body;
 }
-/** Generalist worker (harvester bootstrap / builder): balanced, budget-filling. */
+/** Generalist worker (builder): balanced, budget-filling. */
 function workerBody(budget, maxRepeat) {
     const unitCostV = unitCost([WORK, CARRY, MOVE]);
     const n = Math.max(1, Math.min(maxRepeat, Math.floor(budget / unitCostV)));
@@ -114,6 +115,39 @@ function workerBody(budget, maxRepeat) {
     // Only fill when the BUDGET (not maxRepeat) was the binding constraint, so
     // size-capped roles stay balanced.
     return n < maxRepeat ? fillWork(body, budget - n * unitCostV) : body;
+}
+/**
+ * Harvester body — heavy CARRY for bootstrap efficiency.
+ *
+ * During bootstrap (no source containers), harvesters mine AND haul — every
+ * trip to the spawn wastes ticks walking, so carrying more per trip directly
+ * raises the room's energy throughput.  The base unit [WORK, CARRY, CARRY, MOVE]
+ * (250e) gives a 2:1 carry-to-work ratio; leftover budget fills extra WORK
+ * (faster mining → faster refill → more frequent trips) then CARRY if WORK
+ * would exceed source regen rate.
+ */
+function harvesterBody(budget) {
+    const unit = [WORK, CARRY, CARRY, MOVE]; // 250e
+    const uc = unitCost(unit); // = 250
+    const n = Math.max(1, Math.min(5, Math.floor(budget / uc)));
+    const body = [];
+    for (let i = 0; i < n; i++)
+        body.push(...unit);
+    let left = budget - n * uc;
+    // Fill leftover: WORK first (mining speed), then CARRY.
+    let workParts = n; // each unit has 1 WORK
+    while (left >= types_1.BODY_COST.work && body.length < MAX_PARTS && workParts < 5) {
+        body.push(WORK);
+        left -= types_1.BODY_COST.work;
+        workParts++;
+    }
+    while (left >= types_1.BODY_COST.carry && body.length < MAX_PARTS) {
+        body.push(CARRY);
+        left -= types_1.BODY_COST.carry;
+    }
+    if (left >= types_1.BODY_COST.move && body.length < MAX_PARTS)
+        body.push(MOVE);
+    return body;
 }
 /**
  * Upgrader: balanced WORK:CARRY for high uptime. Each unit is 1 WORK + 1 CARRY
@@ -333,7 +367,7 @@ function bodyForRole(role, budget, rcl) {
         case "hauler":
             return haulerBody(budget);
         case "harvester":
-            return workerBody(budget, 5);
+            return harvesterBody(budget);
         case "builder":
             return workerBody(budget, 5);
         case "upgrader":
@@ -357,8 +391,8 @@ exports.ROLE_PRIORITY = {
     hauler: 2,
     defender: 2, // urgent when present
     remoteHarvester: 3,
-    upgrader: 4,
-    builder: 5,
+    builder: 4, // before upgrader: builds source containers to exit bootstrap ASAP
+    upgrader: 5,
     pioneer: 6,
     claimer: 7,
     scout: 8,

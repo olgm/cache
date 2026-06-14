@@ -42,6 +42,21 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-14 07:25 UTC — Add harvesters and haulers to W43N38
+
+Increase the number of harvesters and haulers in room W43N38 to improve energy throughput and economy scores.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** logistics weakness (`logistics`)
+- **Eval score:** 63/100
+
+**Why:** Room W43N38 energy throughput is low; add harvesters/haulers or sources.
+
+**Issues addressed:**
+- eval: energy sub-score below healthy
+- heuristic: economy throughput
+
 ### 2026-06-14 06:35 UTC — Add dedicated hauler role to room W43N38
 
 Introduce a hauler creep role to move energy from harvesters to spawn and controller, fixing W43N38's low energy throughput.
