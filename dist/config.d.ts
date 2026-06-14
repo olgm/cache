@@ -11,6 +11,7 @@ import { RoomData } from "./utils/roomData";
 /**
  * Stationary container miner: maximise WORK (up to 5 — a full source drain at
  * 10 energy/tick) plus one CARRY (to fill its container) and proportional MOVE.
+ * Fill leftover budget with extra WORK so we never waste spawn capacity.
  */
 export declare function minerBody(budget: number): BodyPartConstant[];
 /** Hauler: CARRY/MOVE at a 2:1 ratio (assumes roads; half-speed when loaded off-road). */

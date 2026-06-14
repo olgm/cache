@@ -5,21 +5,58 @@
  * spawn & extensions first (so the colony keeps spawning), then towers, then the
  * controller container (upgrader supply), then storage as the overflow buffer.
  * Under attack, towers jump to the front of the queue.
+ *
+ * Coordination: haulers reserve their target container so two don't converge on
+ * the same one — the first to claim it gets it, others pick a different source.
+ * The threshold for collection is dynamic: when no container has ≥50 energy, the
+ * hauler picks the fullest available (even if < 50) and waits there, eliminating
+ * the idle gap that low-WORK miners create during early-game.
  */
 
 import { travel } from "../utils/movement";
 import { getRoomData, RoomData } from "../utils/roomData";
 
+// ---------------------------------------------------------------------------
+// Shared reservation state (per-tick, so haulers coordinate within this tick)
+// ---------------------------------------------------------------------------
+let _reservedTick = -1;
+const _reservedContainers = new Set<string>();
+
+/** Build the set of container IDs that other haulers have already claimed. */
+function buildReservedSet(me: string): Set<string> {
+  if (_reservedTick !== Game.time) {
+    _reservedContainers.clear();
+    _reservedTick = Game.time;
+    for (const name in Game.creeps) {
+      const c = Game.creeps[name];
+      if (c.name === me) continue;
+      if (c.memory.role !== "hauler") continue;
+      const tc = c.memory.targetContainer;
+      if (tc) _reservedContainers.add(tc);
+    }
+  }
+  return _reservedContainers;
+}
+
+// ---------------------------------------------------------------------------
+// Main entry point
+// ---------------------------------------------------------------------------
+
 export function runHauler(creep: Creep): void {
   const home = creep.memory.homeRoom || creep.room.name;
   if (creep.room.name !== home) {
+    creep.memory.targetContainer = undefined;
     travel(creep, new RoomPosition(25, 25, home), 20);
     return;
   }
 
   // Toggle collect/deliver at the capacity extremes.
-  if (creep.store.getFreeCapacity() === 0) creep.memory.hauling = true;
-  else if (creep.store[RESOURCE_ENERGY] === 0) creep.memory.hauling = false;
+  if (creep.store.getFreeCapacity() === 0) {
+    creep.memory.hauling = true;
+    creep.memory.targetContainer = undefined; // done collecting
+  } else if (creep.store[RESOURCE_ENERGY] === 0) {
+    creep.memory.hauling = false;
+  }
 
   const data = getRoomData(creep.room);
 
@@ -27,33 +64,59 @@ export function runHauler(creep: Creep): void {
   else collect(creep, data);
 }
 
-/** Pick up energy from the fullest source container or a dropped pile. */
+// ---------------------------------------------------------------------------
+// Collection
+// ---------------------------------------------------------------------------
+
+/** Pick up energy from a source container or dropped pile. */
 function collect(creep: Creep, data: RoomData): void {
-  // Dropped energy (drop-mining overflow) — grab the biggest pile.
+  const reserved = buildReservedSet(creep.name);
+
+  // --- Dropped energy (drop-mining overflow) — grab the biggest pile. ---
   const piles = creep.room.find(FIND_DROPPED_RESOURCES, {
     filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount >= 50,
   });
-  // Source containers with meaningful energy.
-  const containers = data.sources
-    .map((s) => s.container)
-    .filter((c): c is StructureContainer => !!c && c.store[RESOURCE_ENERGY] >= 50);
 
-  // Prefer whichever holds the most, to avoid containers overflowing.
-  const bestContainer = containers.sort(
+  // --- Source containers: skip ones reserved by another hauler. ---
+  const candidates = data.sources
+    .map((s) => s.container)
+    .filter((c): c is StructureContainer => !!c && !reserved.has(c.id));
+
+  // Dynamic threshold: prefer ≥ 50, but if nothing qualifies, take ANY energy
+  // so the hauler doesn't idle while a container slowly fills from low-WORK miners.
+  let qualified = candidates.filter((c) => c.store[RESOURCE_ENERGY] >= 50);
+  if (qualified.length === 0 && candidates.length > 0) {
+    qualified = candidates.filter((c) => c.store[RESOURCE_ENERGY] > 0);
+  }
+
+  // Sort fullest-first to keep containers from capping out.
+  const bestContainer = qualified.sort(
     (a, b) => b.store[RESOURCE_ENERGY] - a.store[RESOURCE_ENERGY],
   )[0];
+
   const bestPile = piles.sort((a, b) => b.amount - a.amount)[0];
 
+  // Prefer the pile if it beats the container, otherwise take the container.
   if (bestPile && (!bestContainer || bestPile.amount > bestContainer.store[RESOURCE_ENERGY])) {
+    creep.memory.targetContainer = undefined;
     if (creep.pickup(bestPile) === ERR_NOT_IN_RANGE) travel(creep, bestPile);
     return;
   }
+
   if (bestContainer) {
-    if (creep.withdraw(bestContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, bestContainer);
+    // Claim this container so other haulers skip it.
+    creep.memory.targetContainer = bestContainer.id;
+    // Also add to the in-tick reservation so a second hauler in the SAME tick
+    // that hasn't run yet also avoids it.
+    _reservedContainers.add(bestContainer.id);
+    if (creep.withdraw(bestContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+      travel(creep, bestContainer);
+    }
     return;
   }
 
-  // Nothing buffered yet: recover tombstones/ruins, else wait near a source.
+  // No container energy at all: recover tombstones/ruins, else wait near a source.
+  creep.memory.targetContainer = undefined;
   const tomb = creep.pos.findClosestByRange(FIND_TOMBSTONES, {
     filter: (t) => t.store[RESOURCE_ENERGY] >= 50,
   });
@@ -64,11 +127,17 @@ function collect(creep: Creep, data: RoomData): void {
   if (data.sources[0]) travel(creep, data.sources[0].source, 2);
 }
 
+// ---------------------------------------------------------------------------
+// Delivery
+// ---------------------------------------------------------------------------
+
 /** Deliver to the highest-priority sink that still has room. */
 function deliver(creep: Creep, data: RoomData): void {
   const target = chooseSink(creep, data);
   if (!target) {
-    // Everything is full — sit on the storage/controller area rather than churn.
+    // Everything is full — try to put the energy to work rather than idling.
+    if (dumpSurplus(creep, data)) return;
+    // Truly nothing to do: park near storage / controller.
     if (data.storage) travel(creep, data.storage, 1);
     return;
   }
@@ -99,4 +168,39 @@ function chooseSink(creep: Creep, data: RoomData): Structure | null {
 
   if (data.storage && data.storage.store.getFreeCapacity(RESOURCE_ENERGY) > 0) return data.storage;
   return null;
+}
+
+/**
+ * All normal sinks are full — dump surplus into something useful so the hauler's
+ * carry capacity isn't wasted. Returns true if energy was spent.
+ */
+function dumpSurplus(creep: Creep, data: RoomData): boolean {
+  // 1. Fill construction sites (cheapest way to convert surplus into progress).
+  const site = creep.pos.findClosestByRange(data.constructionSites);
+  if (site) {
+    if (creep.build(site) === ERR_NOT_IN_RANGE) travel(creep, site);
+    return true;
+  }
+
+  // 2. Upgrade the controller — any energy spent here is never wasted.
+  const ctrl = creep.room.controller;
+  if (ctrl) {
+    if (creep.upgradeController(ctrl) === ERR_NOT_IN_RANGE) travel(creep, ctrl, 3);
+    return true;
+  }
+
+  // 3. Repair the most damaged non-wall structure (walls eat energy too fast).
+  const repairs = creep.room.find(FIND_STRUCTURES, {
+    filter: (s) =>
+      s.hits < s.hitsMax * 0.5 &&
+      s.structureType !== STRUCTURE_WALL &&
+      s.structureType !== STRUCTURE_RAMPART,
+  });
+  if (repairs.length > 0) {
+    const target = creep.pos.findClosestByRange(repairs);
+    if (target && creep.repair(target) === ERR_NOT_IN_RANGE) travel(creep, target);
+    return true;
+  }
+
+  return false;
 }

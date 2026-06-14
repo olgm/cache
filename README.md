@@ -42,6 +42,21 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-14 06:35 UTC — Add dedicated hauler role to room W43N38
+
+Introduce a hauler creep role to move energy from harvesters to spawn and controller, fixing W43N38's low energy throughput.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** logistics weakness (`logistics`)
+- **Eval score:** 63/100
+
+**Why:** Room W43N38 energy throughput is low; add harvesters/haulers or sources.
+
+**Issues addressed:**
+- eval: energy sub-score below healthy
+- heuristic: economy throughput
+
 ### 2026-06-14 05:33 UTC — Focus upgraders on underdeveloped W43N38 controller
 
 Redirect upgrade energy and creep attention to room W43N38 where the RCL sub-score lags, bringing it in line with the colony's economic baseline.

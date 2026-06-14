@@ -43,6 +43,8 @@ declare global {
     claimed?: boolean;
     /** True if this creep was spawned in emergency-bootstrap mode (undersized). */
     bootstrap?: boolean;
+    /** Hauler: container ID it is currently targeting (for cross-hauler coordination). */
+    targetContainer?: string;
   }
 
   interface RoomMemory {

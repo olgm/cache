@@ -53,22 +53,37 @@ function repeat(unit, budget, maxRepeat) {
 /**
  * Stationary container miner: maximise WORK (up to 5 — a full source drain at
  * 10 energy/tick) plus one CARRY (to fill its container) and proportional MOVE.
+ * Fill leftover budget with extra WORK so we never waste spawn capacity.
  */
 function minerBody(budget) {
+    // Find the largest whole-unit miner that fits, then fill leftover budget.
+    let bestW = 1;
+    let bestCost = 0;
     for (let w = 5; w >= 1; w--) {
         const m = Math.min(3, Math.max(1, Math.ceil(w / 2)));
         const cost = w * types_1.BODY_COST.work + types_1.BODY_COST.carry + m * types_1.BODY_COST.move;
         if (cost <= budget) {
-            const body = [];
-            for (let i = 0; i < w; i++)
-                body.push(WORK);
-            body.push(CARRY);
-            for (let i = 0; i < m; i++)
-                body.push(MOVE);
-            return body;
+            bestW = w;
+            bestCost = cost;
+            break;
         }
     }
-    return [WORK, CARRY, MOVE];
+    const body = [];
+    for (let i = 0; i < bestW; i++)
+        body.push(WORK);
+    body.push(CARRY);
+    // Add MOVE proportional to WORK (1:2 ratio, min 1, max 3 since stationary).
+    const baseMove = Math.min(3, Math.max(1, Math.ceil(bestW / 2)));
+    for (let i = 0; i < baseMove; i++)
+        body.push(MOVE);
+    // Fill leftover budget with extra WORK (the single MOVE from the base
+    // handles the extra weight on a road — miners barely move).
+    let leftover = budget - bestCost;
+    while (leftover >= types_1.BODY_COST.work && body.length < MAX_PARTS) {
+        body.push(WORK);
+        leftover -= types_1.BODY_COST.work;
+    }
+    return body;
 }
 /** Hauler: CARRY/MOVE at a 2:1 ratio (assumes roads; half-speed when loaded off-road). */
 function haulerBody(budget) {
@@ -182,7 +197,26 @@ function roleTargets(data, current) {
         let haulers = Math.max(withContainer, rcl >= 3 ? 2 : 1);
         if (storage)
             haulers += 1;
-        targets.hauler = Math.min(haulers, sourceCount * 2 + 1);
+        // Surplus detection: if source containers are near-full (>70% of capacity)
+        // the haulers can't keep up with miner output — add capacity so energy
+        // doesn't cap out and get wasted.  Each container holds 2000e, so if two
+        // containers hold >1400e each, the current hauler count is insufficient.
+        const fullContainers = sources.filter((s) => s.container && s.container.store[RESOURCE_ENERGY] > 1400).length;
+        if (fullContainers >= 2)
+            haulers += 2;
+        else if (fullContainers >= 1)
+            haulers += 1;
+        // Also bump haulers when spawn+extensions are near-full (>90%) — it means
+        // energy is flooding the buffers and should be routed to the controller
+        // container / storage faster so upgraders can burn it.
+        if (!storage) {
+            const spawnExt = [...data.spawns, ...data.extensions];
+            const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY), 0);
+            const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
+            if (totalCap > 0 && totalE > totalCap * 0.9)
+                haulers += 1;
+        }
+        targets.hauler = Math.min(haulers, sourceCount * 2 + 2);
     }
     else {
         targets.hauler = 0;
