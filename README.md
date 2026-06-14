@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-14 00:19 UTC — Allocate more creeps to controller upgrading
+
+Shift spawn priority and creep roles to increase controller upgrade throughput, directly addressing the low GCL sub-score in early game.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** expansion weakness (`expansion`)
+- **Eval score:** 68/100
+
+**Why:** Global Control Level is low (gcl=1); prioritize controller upgrading to expand.
+
+**Issues addressed:**
+- eval: gcl sub-score below healthy
+
 ### 2026-06-13 23:18 UTC — Boost early-game controller upgrade throughput
 
 Prioritize controller upgrading by reallocating creeps and energy to maximize upgrade-per-tick in the starting room while GCL is still 1.
