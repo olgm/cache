@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-14 02:27 UTC — Deploy remote mining in W43N38
+
+Add harvesters and haulers to W43N38 to increase its energy throughput from underperforming sources.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** remote-mining weakness (`remote-mining`)
+- **Eval score:** 45/100
+
+**Why:** Room W43N38 energy throughput is low; add harvesters/haulers or sources.
+
+**Issues addressed:**
+- eval: energy sub-score below healthy
+
 ### 2026-06-14 01:19 UTC — Prioritize controller upgrading to reach GCL 2
 
 Redirect energy and creep labor toward the room controller to accelerate upgrade throughput and unlock the next Global Control Level.
