@@ -317,13 +317,14 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
       else if (fill >= 0.2) upg = Math.max(3, rcl >= 3 ? 3 : 2);
       else                  upg = Math.min(2, rcl >= 3 ? 2 : 1);
     } else {
-      // No controller container yet: scale by RCL conservatively.  Without a
-      // controller container, upgraders walk to source containers — each trip
-      // costs ticks, so fewer, fatter upgraders beat many thin ones.
-      if (rcl >= 6)      upg = 4;
-      else if (rcl >= 4) upg = 3;
-      else if (rcl >= 3) upg = 2;
-      else               upg = 1;
+      // No controller container yet: scale by RCL.  Without a dedicated supply,
+      // upgraders walk to source containers — but at GCL 1-2 the controller is
+      // the ONLY path to expansion, so we push harder than efficiency alone
+      // would dictate.  The GCL push (below) adds further urgency.
+      if (rcl >= 6)      upg = 5;
+      else if (rcl >= 4) upg = 4;
+      else if (rcl >= 3) upg = 3;
+      else               upg = 2;
     }
 
     // GCL push: when GCL is low (1-2) every control point counts — expansion
