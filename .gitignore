@@ -1,1 +1,4 @@
 node_modules/
+# Read-only Screeps engine reference clone for the AI agents (bulky, machine-local;
+# set up per-box via reference/setup-engine.sh). Never deployed - see reference/README.md.
+reference/engine/
