@@ -42,6 +42,21 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-15 15:04 UTC — Add harvesters and haulers to boost W43N38 throughput
+
+Deploy additional harvester and hauler creeps in room W43N38 to fix low energy throughput and strengthen the early-game economy.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** logistics weakness (`logistics`)
+- **Eval score:** 62/100
+
+**Why:** Room W43N38 energy throughput is low; add harvesters/haulers or sources.
+
+**Issues addressed:**
+- eval: energy sub-score below healthy
+- heuristic: economy throughput
+
 ### 2026-06-15 14:04 UTC — Prioritize upgraders in room W43N38
 
 Redirect spawning priorities to send more upgraders to W43N38, whose controller level lags behind and needs focused upgrade throughput.
