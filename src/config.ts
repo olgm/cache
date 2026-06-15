@@ -231,27 +231,34 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
 
   // --- Haulers: move energy from source containers to sinks. ---
   if (withContainer > 0) {
-    let haulers = Math.max(withContainer, rcl >= 3 ? 2 : 1);
+    // Base: one hauler per source-container plus one extra so the pair keeps
+    // energy moving even when one hauler is in transit.  At RCL 3+ miners are
+    // large enough to warrant at least 3 haulers for two sources — the old
+    // floor of 2 was exactly breakeven and caused chronic energy pile-up.
+    let haulers = Math.max(withContainer + 1, rcl >= 4 ? 4 : rcl >= 3 ? 3 : 2);
     if (storage) haulers += 1;
+    // RCL 5+ miners have 5 WORK each (10 e/tick per source); one more hauler
+    // prevents the container from capping between hauler trips.
+    if (rcl >= 5) haulers += 1;
 
-    // Surplus detection: if source containers are near-full (>70% of capacity)
-    // the haulers can't keep up with miner output — add capacity so energy
-    // doesn't cap out and get wasted.  Each container holds 2000e, so if two
-    // containers hold >1400e each, the current hauler count is insufficient.
+    // Surplus detection: if source containers are >50% full the haulers can't
+    // keep up with miner output — add capacity so energy doesn't cap and get
+    // wasted.  Threshold lowered from 1400 (70%) to 1000 (50%) to catch
+    // bottlenecks earlier, before the container hits its 2000e cap.
     const fullContainers = sources.filter(
-      (s) => s.container && s.container.store[RESOURCE_ENERGY] > 1400,
+      (s) => s.container && s.container.store[RESOURCE_ENERGY] > 1000,
     ).length;
     if (fullContainers >= 2) haulers += 2;
     else if (fullContainers >= 1) haulers += 1;
 
-    // Also bump haulers when spawn+extensions are near-full (>90%) — it means
+    // Also bump haulers when spawn+extensions are near-full (>80%) — it means
     // energy is flooding the buffers and should be routed to the controller
     // container / storage faster so upgraders can burn it.
     if (!storage) {
       const spawnExt = [...data.spawns, ...data.extensions];
       const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!, 0);
       const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-      if (totalCap > 0 && totalE > totalCap * 0.9) haulers += 1;
+      if (totalCap > 0 && totalE > totalCap * 0.8) haulers += 1;
     }
 
     targets.hauler = Math.min(haulers, sourceCount * 2 + 2);
