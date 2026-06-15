@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-15 14:04 UTC — Prioritize upgraders in room W43N38
+
+Redirect spawning priorities to send more upgraders to W43N38, whose controller level lags behind and needs focused upgrade throughput.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 81/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-15 13:11 UTC — Focus upgraders on underdeveloped W43N38 controller
 
 Redirect upgrade priority to room W43N38 whose RCL lags behind healthy levels, ensuring more dedicated upgraders work that controller.

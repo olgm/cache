@@ -255,24 +255,25 @@ function roleTargets(data, current) {
     else {
         targets.hauler = 0;
     }
-    // --- Upgraders: baseline scaled by RCL, surplus energy, and waste detection. ---
+    // --- Upgraders: scaled by RCL, confirmed surplus, and GCL urgency. ---
     // GCL progress is earned by controller upgrades — each energy unit spent
     // upgrading yields 1 control point.  The more upgraders we keep busy, the
-    // faster GCL grows and the sooner we can expand to a second room.  At low
-    // RCL energy production often outstrips spawn+extension sink capacity; we
-    // detect that waste and route it into the controller.
+    // faster GCL grows.  But spawning more upgraders than the economy can feed
+    // is counterproductive: underfed upgraders spend most ticks walking to
+    // distant energy sources, burning CPU and clogging roads for zero net gain.
+    //
+    // The best signal of how much surplus energy is reaching the controller is
+    // the controller container's fill level: if haulers keep it topped up, the
+    // colony has real surplus and can sustain more upgraders; if it's always
+    // empty, the surplus doesn't exist yet — adding more upgraders just adds
+    // hungry mouths that fight over scraps.
     //
     // BOOTSTRAP EXCEPTION: with no source container yet (no static mining), the
     // colony cannot sustain a crowd of upgraders — they compete with builders for
     // the same scarce energy AND sit ahead of them in spawn priority, starving the
-    // very construction (the source containers) that ends the bootstrap.
-    //
-    // However, a hard cap of 1 is too conservative: at RCL 3 with full extensions
-    // there is real surplus that should become control points.  Scale the bootstrap
-    // upgrader count by the fill level of the spawn+extensions buffer — allowing up
-    // to 3 when energy is flooding (>90 %), down to 1 when it's tight (≤60 %).
-    // The GCL push still applies (at reduced strength) so GCL 1 colonies aren't
-    // trapped in a single-upgrader rut that starves GCL progress.
+    // very construction (the source containers) that ends the bootstrap.  Scale
+    // the bootstrap upgrader count by the fill level of the spawn+extensions
+    // buffer — allowing up to 3 when energy is flooding, down to 1 when tight.
     if (withContainer === 0) {
         let upg = 1;
         const spawnExt = [...data.spawns, ...data.extensions];
@@ -284,20 +285,20 @@ function roleTargets(data, current) {
             else if (totalE > totalCap * 0.6)
                 upg = 2;
         }
-        // GCL push: at GCL 1-2 every control point is precious — expansion to a
-        // second room is gated on GCL, so we run more upgraders than the bootstrap
-        // economy would otherwise tolerate.  Builders now have lower spawn priority
-        // (5 vs upgrader 4), so the extra upgraders are spawned first and builders
-        // fill in behind them.  The worst case is slower construction, but delayed
-        // containers are still preferable to a stalled GCL that blocks expansion
-        // entirely.
+        // GCL push at GCL 1-2: expansion is gated on GCL, so every spare joule
+        // must go into the controller.  Still capped by the bootstrap ceiling so
+        // we don't starve builders (the source containers end the bootstrap).
         if (Game.gcl.level === 1)
             upg = Math.max(upg, 3);
         else if (Game.gcl.level === 2)
-            upg = Math.max(upg, 3);
+            upg = Math.max(upg, 2);
         targets.upgrader = upg;
     }
     else {
+        // --- Post-bootstrap: the controller container is the key surplus signal. ---
+        const cc = data.controllerContainer;
+        const ccEnergy = cc ? cc.store[RESOURCE_ENERGY] : 0;
+        const ccCap = cc ? cc.store.getCapacity(RESOURCE_ENERGY) : 2000;
         let upg = 1;
         if (rcl >= 8) {
             upg = 1; // capped at 15 energy/tick — one fat upgrader is enough
@@ -306,46 +307,62 @@ function roleTargets(data, current) {
             const e = storage.store[RESOURCE_ENERGY];
             upg = Math.min(6, 2 + Math.floor(e / 12000));
         }
-        else {
-            // No storage yet: scale by RCL and containerization.  At RCL 3–4 with two
-            // container-mined sources the colony produces ~20 energy/tick net; each
-            // RCL-3 upgrader (3 WORK) burns 3 energy/tick upgrading, so 4–5 upgraders
-            // convert most surplus into control points — accelerating both RCL and GCL.
-            if (rcl >= 6)
-                upg = 5;
-            else if (rcl >= 4)
-                upg = 4;
-            else if (rcl >= 3)
-                upg = withContainer > 0 ? 4 : 3;
+        else if (cc) {
+            // Controller container exists — scale upgrader count by how full it is.
+            // A topped-up container means surplus energy is reliably arriving; an
+            // empty one means the colony is energy-starved and more upgraders would
+            // just fight over nothing.
+            const fill = ccEnergy / ccCap;
+            if (fill >= 0.8)
+                upg = Math.max(5, rcl >= 4 ? 5 : 4);
+            else if (fill >= 0.5)
+                upg = Math.max(4, rcl >= 4 ? 4 : 3);
+            else if (fill >= 0.2)
+                upg = Math.max(3, rcl >= 3 ? 3 : 2);
             else
-                upg = withContainer > 0 ? 2 : 1; // RCL 1-2: bootstrap
+                upg = Math.min(2, rcl >= 3 ? 2 : 1);
         }
-        // GCL push: when GCL is low (1–3) expansion is gated by control points,
-        // not rooms, so every spare joule must go into the controller.  At GCL 1
-        // a second room is impossible — the ONLY path forward is upgrading the
-        // home controller, so we push harder (+2).  At GCL 2 expansion is
-        // unlocked but still tight (+1).  At GCL 3 the taper begins.
-        if (Game.gcl.level === 1)
-            upg += 2;
-        else if (Game.gcl.level === 2)
-            upg += 1;
-        else if (Game.gcl.level === 3)
-            upg = Math.max(upg, 3);
-        // Waste detection: when spawn+extensions are near full (>60%), harvested
-        // energy has nowhere to go — bump the upgrader target so surplus becomes
-        // control points instead of decaying in containers or being lost to capped
-        // buffers.  Only applies when there's no storage (storage absorbs surplus).
-        // At >90% fill the bump is +2 because energy is flooding the buffers fast.
-        if (!storage) {
+        else {
+            // No controller container yet: scale by RCL conservatively.  Without a
+            // controller container, upgraders walk to source containers — each trip
+            // costs ticks, so fewer, fatter upgraders beat many thin ones.
+            if (rcl >= 6)
+                upg = 4;
+            else if (rcl >= 4)
+                upg = 3;
+            else if (rcl >= 3)
+                upg = 2;
+            else
+                upg = 1;
+        }
+        // GCL push: when GCL is low (1-2) every control point counts — expansion
+        // is gated on GCL.  But the push is bounded: it can't exceed what the
+        // controller container fill level says the economy can support, because
+        // adding underfed upgraders is net negative (they burn CPU and walk ticks
+        // instead of upgrading).  The push is strongest (+2) when the controller
+        // container is healthy (>50%); weaker (+1) when energy is tight.
+        if (Game.gcl.level === 1) {
+            upg += cc && ccEnergy > ccCap * 0.5 ? 2 : 1;
+        }
+        else if (Game.gcl.level === 2) {
+            upg += cc && ccEnergy > ccCap * 0.5 ? 1 : 0;
+        }
+        // Waste detection: when spawn+extensions are near full (>75%) AND there is
+        // no storage, harvested energy risks capping out at the buffers.  A modest
+        // bump routes that surplus into control points instead.  Only fires when
+        // the controller container already has energy (the surplus is real).
+        if (!storage && cc && ccEnergy > 0) {
             const spawnExt = [...data.spawns, ...data.extensions];
             const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY), 0);
             const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-            if (totalCap > 0 && totalE > totalCap * 0.6) {
-                const bump = totalE > totalCap * 0.9 ? 2 : 1;
-                upg = Math.max(upg, upg + bump);
+            if (totalCap > 0 && totalE > totalCap * 0.75) {
+                upg += 1;
             }
         }
-        targets.upgrader = upg;
+        // Hard cap at 6: a single room produces at most ~20e/tick from two sources.
+        // Even with perfect efficiency, more than 6 upgraders means each gets < 3.3
+        // energy/tick — they'd spend more ticks walking than upgrading.
+        targets.upgrader = Math.min(upg, 6);
     }
     // --- Builders: scale with construction load. ---
     const sites = constructionSites.length;

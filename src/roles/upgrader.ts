@@ -5,6 +5,12 @@
  * the general energy pool, and upgrades the room controller. Controller upgrades
  * are what earn both RCL and GCL progress, so a healthy economy keeps several
  * upgraders busy — the target count scales with surplus (storage) energy.
+ *
+ * Key design: when the controller container exists, the upgrader parks beside it
+ * even when empty — walking across the room to a source container costs ticks
+ * that are better spent waiting for the next hauler delivery.  The controller
+ * container is the most efficient supply path because haulers bring energy right
+ * to the upgrader's workstation.
  */
 
 import { travel } from "../utils/movement";
@@ -31,28 +37,31 @@ export function runUpgrader(creep: Creep): void {
     return;
   }
 
-  // Gather: prefer the controller container (adjacent, dedicated).
   const data = getRoomData(creep.room);
   const cc = data.controllerContainer;
+
+  // Gather: prefer the controller container (adjacent, dedicated).
   if (cc && cc.store[RESOURCE_ENERGY] > 0) {
     if (creep.withdraw(cc, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, cc);
     return;
   }
 
-  // Waste prevention: when spawn+extensions hold energy above a threshold, pull
-  // from them directly so surplus becomes control points instead of blocking
-  // harvester deliveries.  The threshold is lower (50 %) when there's no
-  // controller container — upgraders have no dedicated supply, so every joule
-  // they burn is one less trip to a distant source.  When a controller
-  // container exists the threshold is higher (75 %) because the container is
-  // the preferred supply and spawn energy is better reserved for new creeps.
-  // Only fires when there's no storage (which absorbs surplus harmlessly).
+  // Controller container exists but is empty: park beside it.  Walking across
+  // the room to a source container burns ticks; haulers will refill this
+  // container soon, and the upgrader is right there to grab it.
+  if (cc) {
+    travel(creep, cc);
+    return;
+  }
+
+  // No controller container: use the general energy pool.  The waste-
+  // prevention path drains spawn/extensions when they're flooding (>50 %
+  // full), which is faster than walking to a source in the bootstrap phase.
   if (!data.storage) {
     const spawnExt = [...data.spawns, ...data.extensions];
     const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!, 0);
     const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-    const threshold = data.controllerContainer ? 0.75 : 0.5;
-    if (totalCap > 0 && totalE > totalCap * threshold) {
+    if (totalCap > 0 && totalE > totalCap * 0.5) {
       const src = spawnExt.find((s) => s.store[RESOURCE_ENERGY] > 0);
       if (src) {
         if (creep.withdraw(src, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, src);
