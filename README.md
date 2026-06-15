@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-15 20:14 UTC — Focus upgraders on W43N38 controller
+
+Shift upgrade creep allocation toward room W43N38 to bring its underdeveloped RCL up to healthy levels.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 86/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-15 19:08 UTC — Focus upgraders on W43N38 controller
 
 Redirect upgrade creeps and energy to room W43N38 to fix its underdeveloped RCL and bring upgrade throughput in line with healthy baselines.
