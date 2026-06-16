@@ -11,15 +11,31 @@
  * that are better spent waiting for the next hauler delivery.  The controller
  * container is the most efficient supply path because haulers bring energy right
  * to the upgrader's workstation.
+ *
+ * Starvation guard: if the upgrader has been parked at the controller container
+ * for too long without energy arriving (haulers are behind or dead), it times
+ * out and gathers from elsewhere rather than idling forever.  The idle counter
+ * resets as soon as the creep picks up any energy, even a single tick's worth.
  */
 
 import { travel } from "../utils/movement";
 import { getRoomData } from "../utils/roomData";
 import { gatherEnergy } from "../utils/energy";
 
+/**
+ * Max ticks an upgrader will park beside an empty controller container before
+ * falling back to the general energy pool.  A typical hauler cycle is ~25-40
+ * ticks, so 50 gives one full cycle of slack.
+ */
+const PARK_TIMEOUT = 50;
+
+/** Minimum energy in a nearby dropped pile / tombstone worth grabbing. */
+const MIN_NEARBY = 50;
+
 export function runUpgrader(creep: Creep): void {
   const home = creep.memory.homeRoom || creep.room.name;
   if (creep.room.name !== home) {
+    creep.memory.upgraderIdleTicks = undefined; // reset idle counter during transit
     travel(creep, new RoomPosition(25, 25, home), 20);
     return;
   }
@@ -33,6 +49,8 @@ export function runUpgrader(creep: Creep): void {
   // The simple "upgrade on any energy" pattern ensures every joule picked up
   // is converted to control points without delay.
   if (creep.store[RESOURCE_ENERGY] > 0) {
+    // Reset the starvation counter: energy arrived.
+    creep.memory.upgraderIdleTicks = undefined;
     if (creep.upgradeController(ctrl) === ERR_NOT_IN_RANGE) travel(creep, ctrl, 3);
     return;
   }
@@ -42,22 +60,23 @@ export function runUpgrader(creep: Creep): void {
 
   // Gather: prefer the controller container (adjacent, dedicated).
   if (cc && cc.store[RESOURCE_ENERGY] > 0) {
+    creep.memory.upgraderIdleTicks = undefined; // energy is here, reset idle counter
     if (creep.withdraw(cc, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, cc);
     return;
   }
 
   // Controller container exists but is empty.
   if (cc) {
-    // Before parking, check whether spawn/extensions are flooding with energy
-    // (>75 % full).  If so, drain them directly instead of sitting idle waiting
-    // for a hauler that may be behind or dead — every tick the upgrader isn't
-    // upgrading is a tick of wasted control-point potential.  Only park when
-    // there is nowhere else to get energy.
+    // Always drain spawn/extensions when they are >50 % full — the energy is
+    // already harvested and sitting idle; converting it to control points
+    // immediately is better than waiting for a hauler route that may be slow
+    // or stalled.  The spawn manager runs BEFORE creep dispatch, so spawning
+    // always claims its energy first.
     if (!data.storage) {
       const spawnExt = [...data.spawns, ...data.extensions];
       const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!, 0);
       const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-      if (totalCap > 0 && totalE > totalCap * 0.75) {
+      if (totalCap > 0 && totalE > totalCap * 0.5) {
         const src = spawnExt.find((s) => s.store[RESOURCE_ENERGY] > 0);
         if (src) {
           if (creep.withdraw(src, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, src);
@@ -65,8 +84,25 @@ export function runUpgrader(creep: Creep): void {
         }
       }
     }
-    // No surplus to drain — park beside the controller container so the
-    // upgrader is right there when a hauler delivers.
+
+    // Before parking, grab any energy that happens to be right here — dropped
+    // piles, tombstones, or ruins within 5 tiles of the controller container.
+    // These are free energy that requires negligible travel and no pathfinding.
+    if (grabNearbyEnergy(creep, cc.pos)) return;
+
+    // Starvation guard: if the upgrader has been parked here for too long
+    // without any energy arriving, the haulers are behind or dead.  Fall back
+    // to the general energy pool rather than idling forever — every tick the
+    // controller isn't being upgraded is a tick of wasted GCL/RCL progress.
+    const idleTicks = creep.memory.upgraderIdleTicks || 0;
+    if (idleTicks >= PARK_TIMEOUT) {
+      gatherEnergy(creep, data);
+      return;
+    }
+    creep.memory.upgraderIdleTicks = idleTicks + 1;
+
+    // Park beside the controller container so the upgrader is right there
+    // when a hauler delivers.
     travel(creep, cc);
     return;
   }
@@ -88,4 +124,40 @@ export function runUpgrader(creep: Creep): void {
   }
 
   gatherEnergy(creep, data);
+}
+
+/**
+ * Pick up nearby dropped energy, tombstones, or ruins within range 5 of `pos`.
+ * Returns true if energy was found and an action was taken.
+ */
+function grabNearbyEnergy(creep: Creep, pos: RoomPosition): boolean {
+  const dropped = pos.findInRange(FIND_DROPPED_RESOURCES, 5, {
+    filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount >= MIN_NEARBY,
+  });
+  if (dropped.length > 0) {
+    // Take the biggest pile.
+    const best = dropped.sort((a, b) => b.amount - a.amount)[0];
+    if (creep.pickup(best) === ERR_NOT_IN_RANGE) travel(creep, best);
+    return true;
+  }
+
+  const tomb = pos.findInRange(FIND_TOMBSTONES, 5, {
+    filter: (t) => t.store[RESOURCE_ENERGY] >= MIN_NEARBY,
+  });
+  if (tomb.length > 0) {
+    const best = tomb.sort((a, b) => b.store[RESOURCE_ENERGY] - a.store[RESOURCE_ENERGY])[0];
+    if (creep.withdraw(best, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, best);
+    return true;
+  }
+
+  const ruin = pos.findInRange(FIND_RUINS, 5, {
+    filter: (r) => r.store[RESOURCE_ENERGY] >= MIN_NEARBY,
+  });
+  if (ruin.length > 0) {
+    const best = ruin.sort((a, b) => b.store[RESOURCE_ENERGY] - a.store[RESOURCE_ENERGY])[0];
+    if (creep.withdraw(best, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, best);
+    return true;
+  }
+
+  return false;
 }

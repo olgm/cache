@@ -11,5 +11,10 @@
  * that are better spent waiting for the next hauler delivery.  The controller
  * container is the most efficient supply path because haulers bring energy right
  * to the upgrader's workstation.
+ *
+ * Starvation guard: if the upgrader has been parked at the controller container
+ * for too long without energy arriving (haulers are behind or dead), it times
+ * out and gathers from elsewhere rather than idling forever.  The idle counter
+ * resets as soon as the creep picks up any energy, even a single tick's worth.
  */
 export declare function runUpgrader(creep: Creep): void;

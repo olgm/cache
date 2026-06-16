@@ -37,6 +37,8 @@ declare global {
     targetRoom?: string;
     /** Builder/upgrader/harvester: true = spending energy, false = gathering. */
     working?: boolean;
+    /** Upgrader: consecutive ticks parked idle at an empty controller container. */
+    upgraderIdleTicks?: number;
     /** Hauler: true = delivering, false = collecting. */
     hauling?: boolean;
     /** Claimer: set once the target controller is claimed. */
