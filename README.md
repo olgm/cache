@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-16 21:32 UTC — Focus upgraders on room W43N38
+
+Assign dedicated creep upgraders to the underdeveloped W43N38 controller to raise its RCL sub-score and close the upgrading gap.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 81/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-16 19:17 UTC — Focus upgraders on W43N38 controller
 
 Redirect upgrade creeps to room W43N38 to raise the controller level from its currently underdeveloped state.

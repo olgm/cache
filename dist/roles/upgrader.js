@@ -26,9 +26,15 @@ const energy_1 = require("../utils/energy");
 /**
  * Max ticks an upgrader will park beside an empty controller container before
  * falling back to the general energy pool.  A typical hauler cycle is ~25-40
- * ticks, so 50 gives one full cycle of slack.
+ * ticks; 35 gives one full cycle of slack without excessive idle time.
  */
-const PARK_TIMEOUT = 50;
+const PARK_TIMEOUT = 35;
+/**
+ * After this many ticks parked at an empty controller container, the upgrader
+ * lowers its threshold for drawing from spawn/extensions from 50 % to 25 %,
+ * converting buffer energy into control points rather than idling.
+ */
+const PROGRESSIVE_DRAW_TICKS = 15;
 /** Minimum energy in a nearby dropped pile / tombstone worth grabbing. */
 const MIN_NEARBY = 50;
 function runUpgrader(creep) {
@@ -64,16 +70,24 @@ function runUpgrader(creep) {
     }
     // Controller container exists but is empty.
     if (cc) {
-        // Always drain spawn/extensions when they are >50 % full — the energy is
-        // already harvested and sitting idle; converting it to control points
-        // immediately is better than waiting for a hauler route that may be slow
-        // or stalled.  The spawn manager runs BEFORE creep dispatch, so spawning
-        // always claims its energy first.
+        // Before parking, grab any energy that happens to be right here — dropped
+        // piles, tombstones, or ruins within 5 tiles of the controller container.
+        // These are free energy that requires negligible travel and no pathfinding.
+        if (grabNearbyEnergy(creep, cc.pos))
+            return;
+        const idleTicks = creep.memory.upgraderIdleTicks || 0;
+        // Progressive spawn/extension drain: when the controller container is dry
+        // and the upgrader is parked, convert idle buffer energy into control
+        // points.  At 0–14 parked ticks threshold = 50 % (only drain real surplus);
+        // at 15+ ticks threshold drops to 25 % so the upgrader doesn't idle for a
+        // full PARK_TIMEOUT while spawn buffers sit half-full.  The spawn manager
+        // runs BEFORE creep dispatch, so spawning always claims its energy first.
         if (!data.storage) {
             const spawnExt = [...data.spawns, ...data.extensions];
             const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY), 0);
             const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-            if (totalCap > 0 && totalE > totalCap * 0.5) {
+            const threshold = idleTicks >= PROGRESSIVE_DRAW_TICKS ? 0.25 : 0.5;
+            if (totalCap > 0 && totalE > totalCap * threshold) {
                 const src = spawnExt.find((s) => s.store[RESOURCE_ENERGY] > 0);
                 if (src) {
                     if (creep.withdraw(src, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE)
@@ -82,16 +96,10 @@ function runUpgrader(creep) {
                 }
             }
         }
-        // Before parking, grab any energy that happens to be right here — dropped
-        // piles, tombstones, or ruins within 5 tiles of the controller container.
-        // These are free energy that requires negligible travel and no pathfinding.
-        if (grabNearbyEnergy(creep, cc.pos))
-            return;
         // Starvation guard: if the upgrader has been parked here for too long
         // without any energy arriving, the haulers are behind or dead.  Fall back
         // to the general energy pool rather than idling forever — every tick the
         // controller isn't being upgraded is a tick of wasted GCL/RCL progress.
-        const idleTicks = creep.memory.upgraderIdleTicks || 0;
         if (idleTicks >= PARK_TIMEOUT) {
             (0, energy_1.gatherEnergy)(creep, data);
             return;
