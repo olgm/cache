@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-16 07:11 UTC — Focus upgraders on W43N38 underdeveloped controller
+
+Redirect upgrade-focused creeps to room W43N38 where the controller level lags behind the rest of the colony.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 86/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-16 06:15 UTC — Add harvesters and haulers to W43N38
 
 Deploy dedicated harvester and hauler creeps in room W43N38 to increase energy throughput and resolve the low logistics sub-score.
