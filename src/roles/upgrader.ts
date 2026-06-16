@@ -46,10 +46,27 @@ export function runUpgrader(creep: Creep): void {
     return;
   }
 
-  // Controller container exists but is empty: park beside it.  Walking across
-  // the room to a source container burns ticks; haulers will refill this
-  // container soon, and the upgrader is right there to grab it.
+  // Controller container exists but is empty.
   if (cc) {
+    // Before parking, check whether spawn/extensions are flooding with energy
+    // (>75 % full).  If so, drain them directly instead of sitting idle waiting
+    // for a hauler that may be behind or dead — every tick the upgrader isn't
+    // upgrading is a tick of wasted control-point potential.  Only park when
+    // there is nowhere else to get energy.
+    if (!data.storage) {
+      const spawnExt = [...data.spawns, ...data.extensions];
+      const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!, 0);
+      const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
+      if (totalCap > 0 && totalE > totalCap * 0.75) {
+        const src = spawnExt.find((s) => s.store[RESOURCE_ENERGY] > 0);
+        if (src) {
+          if (creep.withdraw(src, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, src);
+          return;
+        }
+      }
+    }
+    // No surplus to drain — park beside the controller container so the
+    // upgrader is right there when a hauler delivers.
     travel(creep, cc);
     return;
   }

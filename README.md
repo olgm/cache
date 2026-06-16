@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-16 03:12 UTC — Focus upgraders on W43N38 controller
+
+Redirect upgrade creeps to room W43N38 to raise its below-healthy room control level.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 86/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-16 01:20 UTC — Add harvesters and haulers to W43N38
 
 Deploy additional harvester and hauler creeps in room W43N38 to fix low energy throughput and raise the economy sub-score.
