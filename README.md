@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-16 23:16 UTC — Prioritize upgrader allocation to W43N38 controller
+
+Direct more creeps and energy to upgrade the underdeveloped controller in room W43N38, whose RCL sub-score lags below healthy thresholds.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 86/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-16 22:15 UTC — Add dedicated harvester and hauler creeps for W43N38
 
 Introduce specialized harvester and hauler creep roles to increase energy collection and transport throughput in room W43N38, addressing its low economy score.
