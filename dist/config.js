@@ -232,7 +232,9 @@ function roleTargets(data, current) {
         // energy moving even when one hauler is in transit.  At RCL 3+ miners are
         // large enough to warrant at least 3 haulers for two sources — the old
         // floor of 2 was exactly breakeven and caused chronic energy pile-up.
-        let haulers = Math.max(withContainer + 1, rcl >= 4 ? 4 : rcl >= 3 ? 3 : 2);
+        // At RCL 4+ miners reach 4-5 WORK (8-10 e/tick each) — the extra hauler
+        // prevents the source containers from capping between trips.
+        let haulers = Math.max(withContainer + 1, rcl >= 5 ? 6 : rcl >= 4 ? 5 : rcl >= 3 ? 3 : 2);
         if (storage)
             haulers += 1;
         // RCL 5+ miners have 5 WORK each (10 e/tick per source); one more hauler
@@ -248,7 +250,7 @@ function roleTargets(data, current) {
             haulers += 2;
         else if (fullContainers >= 1)
             haulers += 1;
-        // Also bump haulers when spawn+extensions are near-full (>80%) — it means
+        // Bump haulers when spawn+extensions are near-full (>80%) — it means
         // energy is flooding the buffers and should be routed to the controller
         // container / storage faster so upgraders can burn it.
         if (!storage) {
@@ -257,6 +259,24 @@ function roleTargets(data, current) {
             const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
             if (totalCap > 0 && totalE > totalCap * 0.8)
                 haulers += 1;
+        }
+        // Controller-starvation signal: spawn buffers are healthy (>50% full) but
+        // the controller container is nearly empty (<20%).  Energy is piling up in
+        // the spawn instead of reaching the upgraders — one more hauler helps
+        // route the surplus before the source containers cap and waste energy.
+        if (!storage) {
+            const cc = data.controllerContainer;
+            const ccEnergy = cc ? cc.store[RESOURCE_ENERGY] : 0;
+            const ccCap = cc ? cc.store.getCapacity(RESOURCE_ENERGY) : 2000;
+            const spawnExt = [...data.spawns, ...data.extensions];
+            const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY), 0);
+            const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
+            if (cc &&
+                totalCap > 0 &&
+                totalE > totalCap * 0.5 &&
+                ccEnergy < ccCap * 0.2) {
+                haulers += 1;
+            }
         }
         targets.hauler = Math.min(haulers, sourceCount * 2 + 2);
     }
