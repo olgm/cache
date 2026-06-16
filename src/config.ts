@@ -357,16 +357,17 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
       else               upg = 2;
     }
 
-    // GCL push: when GCL is low (1-2) every control point counts — expansion
-    // is gated on GCL.  But the push is bounded: it can't exceed what the
-    // controller container fill level says the economy can support, because
-    // adding underfed upgraders is net negative (they burn CPU and walk ticks
-    // instead of upgrading).  The push is strongest (+2) when the controller
-    // container is healthy (>50%); weaker (+1) when energy is tight.
+    // GCL push: when GCL is low every control point counts — expansion is gated
+    // on GCL.  Instead of a bonus (which can be small when the economy appears
+    // tight), use a hard floor that guarantees a minimum upgrader count.  Even
+    // a controller container at <20% fill leaves ~4 e/tick throughput per
+    // upgrader at RCL4, so the floor is sustainable.  Control points earned now
+    // compound into earlier multi-room expansion — the single biggest strategic
+    // lever in the early game.
     if (Game.gcl.level === 1) {
-      upg += cc && ccEnergy > ccCap * 0.5 ? 2 : 1;
+      upg = Math.max(upg, 4);
     } else if (Game.gcl.level === 2) {
-      upg += cc && ccEnergy > ccCap * 0.5 ? 1 : 0;
+      upg = Math.max(upg, 3);
     }
 
     // Waste detection: when spawn+extensions are near full (>75%) AND there is
