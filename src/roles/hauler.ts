@@ -145,8 +145,13 @@ function deliver(creep: Creep, data: RoomData): void {
 }
 
 function chooseSink(creep: Creep, data: RoomData): Structure | null {
-  const spawnExt = [...data.spawns, ...data.extensions].filter(
+  const spawnExtAll = [...data.spawns, ...data.extensions];
+  const spawnExt = spawnExtAll.filter(
     (s) => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0,
+  );
+  const totalSpawnExtFree = spawnExt.reduce(
+    (sum, s) => sum + s.store.getFreeCapacity(RESOURCE_ENERGY),
+    0,
   );
   const towers = data.towers.filter((t) => t.store.getFreeCapacity(RESOURCE_ENERGY) > 0);
 
@@ -155,8 +160,17 @@ function chooseSink(creep: Creep, data: RoomData): Structure | null {
     return creep.pos.findClosestByRange(towers);
   }
 
-  // Spawn & extensions first — spawning is the colony heartbeat.
-  if (spawnExt.length > 0) return creep.pos.findClosestByRange(spawnExt);
+  // Spawn & extensions are the colony heartbeat, but routing a full hauler to
+  // an extension that needs only 5 energy starves the controller and wastes
+  // travel ticks.  Only prioritise spawns/extensions when there is a
+  // meaningful deficit: total free capacity ≥ the hauler's carried energy, or
+  // at least 200 (so spawning never stalls even with tiny haulers).
+  const carriedEnergy = creep.store[RESOURCE_ENERGY];
+  const meaningfulDeficit = totalSpawnExtFree >= Math.max(200, carriedEnergy * 0.5);
+
+  if (spawnExt.length > 0 && meaningfulDeficit) {
+    return creep.pos.findClosestByRange(spawnExt);
+  }
 
   // Controller container before towers: controller upgrades fuel GCL, which
   // unlocks multi-room expansion.  Towers only need energy for defence — at
