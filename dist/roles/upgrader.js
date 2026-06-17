@@ -26,15 +26,24 @@ const energy_1 = require("../utils/energy");
 /**
  * Max ticks an upgrader will park beside an empty controller container before
  * falling back to the general energy pool.  A typical hauler cycle is ~25-40
- * ticks; 35 gives one full cycle of slack without excessive idle time.
+ * ticks.  25 gives one full cycle of slack while cutting idle time by ~30 %
+ * vs the old 35, so if haulers are dead the upgrader self-rescues faster.
  */
-const PARK_TIMEOUT = 35;
+const PARK_TIMEOUT = 25;
 /**
  * After this many ticks parked at an empty controller container, the upgrader
- * lowers its threshold for drawing from spawn/extensions from 50 % to 25 %,
+ * lowers its threshold for drawing from spawn/extensions from 40 % to 25 %,
  * converting buffer energy into control points rather than idling.
  */
-const PROGRESSIVE_DRAW_TICKS = 15;
+const PROGRESSIVE_DRAW_TICKS = 10;
+/**
+ * When the controller container is empty but a source container has ≥ this much
+ * energy, the hauler pipeline is bottlenecked — the upgrader walks to the source
+ * container directly instead of parking.  This prevents idle ticks when haulers
+ * can't keep up with miner output (common during the early RCL 3-4 ramp when
+ * miners produce faster than the hauler fleet can carry).
+ */
+const SOURCE_FETCH_THRESHOLD = 800;
 /** Minimum energy in a nearby dropped pile / tombstone worth grabbing. */
 const MIN_NEARBY = 50;
 function runUpgrader(creep) {
@@ -76,17 +85,37 @@ function runUpgrader(creep) {
         if (grabNearbyEnergy(creep, cc.pos))
             return;
         const idleTicks = creep.memory.upgraderIdleTicks || 0;
+        // Smart source fetch: when the controller container is empty but a source
+        // container is overflowing (≥ SOURCE_FETCH_THRESHOLD), the hauler pipeline
+        // is bottlenecked — walk to the fullest source container directly instead
+        // of parking.  Each tick spent walking is cheaper than idling, and fetching
+        // energy from the source forces it through the controller at full uptime.
+        // Only triggers after a few idle ticks so we don't pre-empt a hauler that
+        // is already mid-delivery.
+        if (idleTicks >= 3) {
+            const fullSourceContainers = data.sources
+                .map((s) => s.container)
+                .filter((c) => !!c && c.store[RESOURCE_ENERGY] >= SOURCE_FETCH_THRESHOLD)
+                .sort((a, b) => b.store[RESOURCE_ENERGY] - a.store[RESOURCE_ENERGY]);
+            if (fullSourceContainers.length > 0) {
+                creep.memory.upgraderIdleTicks = undefined;
+                const target = fullSourceContainers[0];
+                if (creep.withdraw(target, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE)
+                    (0, movement_1.travel)(creep, target);
+                return;
+            }
+        }
         // Progressive spawn/extension drain: when the controller container is dry
         // and the upgrader is parked, convert idle buffer energy into control
-        // points.  At 0–14 parked ticks threshold = 50 % (only drain real surplus);
-        // at 15+ ticks threshold drops to 25 % so the upgrader doesn't idle for a
+        // points.  At 0–9 parked ticks threshold = 40 % (drain modest surplus);
+        // at 10+ ticks threshold drops to 25 % so the upgrader doesn't idle for a
         // full PARK_TIMEOUT while spawn buffers sit half-full.  The spawn manager
         // runs BEFORE creep dispatch, so spawning always claims its energy first.
         if (!data.storage) {
             const spawnExt = [...data.spawns, ...data.extensions];
             const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY), 0);
             const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-            const threshold = idleTicks >= PROGRESSIVE_DRAW_TICKS ? 0.25 : 0.5;
+            const threshold = idleTicks >= PROGRESSIVE_DRAW_TICKS ? 0.25 : 0.4;
             if (totalCap > 0 && totalE > totalCap * threshold) {
                 const src = spawnExt.find((s) => s.store[RESOURCE_ENERGY] > 0);
                 if (src) {

@@ -371,11 +371,17 @@ function roleTargets(data, current) {
         // upgrader at RCL4, so the floor is sustainable.  Control points earned now
         // compound into earlier multi-room expansion — the single biggest strategic
         // lever in the early game.
+        //
+        // RATCHET (v0.3.1): the old floors (5/4 at GCL 1/2) still left idle
+        // energyCapacity during the early GCL grind; pushing to 6/5 ensures every
+        // spare joule is converted to control points.  The hard cap at 6 prevents
+        // over-commitment, and the economy at RCL 4+ with proper hauler routing
+        // (GCL-push controller-container delivery) can sustain this.
         if (Game.gcl.level === 1) {
-            upg = Math.max(upg, 5);
+            upg = Math.max(upg, 6);
         }
         else if (Game.gcl.level === 2) {
-            upg = Math.max(upg, 4);
+            upg = Math.max(upg, 5);
         }
         // Waste detection: when spawn+extensions are near full (>75%) AND there is
         // no storage, harvested energy risks capping out at the buffers.  A modest
