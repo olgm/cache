@@ -30,12 +30,18 @@ export declare function workerBody(budget: number, maxRepeat: number): BodyPartC
  */
 export declare function harvesterBody(budget: number): BodyPartConstant[];
 /**
- * Upgrader: balanced WORK:CARRY for high uptime. Each unit is 1 WORK + 1 CARRY
- * + 1 MOVE (200e), giving a 1:1 work-to-carry ratio that keeps the creep
- * upgrading for ~50 ticks between refills instead of the 12-25 ticks a 2:1
- * ratio gives — halving the number of refill trips and nearly doubling the
- * effective energy→control-point conversion rate. Capped at 15 WORK total
- * because a controller accepts at most 15 energy/tick of upgrade at RCL8.
+ * Upgrader body — tuned for maximum control-point conversion per energy spent.
+ *
+ * At GCL 1-2 every control point gates multi-room expansion, so the body is
+ * WORK-biased (2:1:1 WORK:CARRY:MOVE unit, 300e).  The upgrader parks at the
+ * controller container (adjacent), so refill walks are 1-2 tiles — the extra
+ * refill frequency costs almost nothing while 2:1:1 packs 33-50% more WORK into
+ * the same energy budget vs the balanced 1:1:1.
+ *
+ * At GCL 3+ we switch to the balanced 1:1:1 unit (200e) for high uptime
+ * (~50 ticks between refills), which matters more when upgraders occasionally
+ * walk to source containers.  Capped at 15 WORK total because a controller
+ * accepts at most 15 energy/tick of upgrade at RCL 8.
  */
 export declare function upgraderBody(budget: number, rcl: number): BodyPartConstant[];
 /** Melee defender: ATTACK with 1:1 MOVE so it stays mobile while fighting. */
