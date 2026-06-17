@@ -25,26 +25,30 @@ import { gatherEnergy } from "../utils/energy";
 /**
  * Max ticks an upgrader will park beside an empty controller container before
  * falling back to the general energy pool.  A typical hauler cycle is ~25-40
- * ticks.  25 gives one full cycle of slack while cutting idle time by ~30 %
- * vs the old 35, so if haulers are dead the upgrader self-rescues faster.
+ * ticks, but if the controller container is empty the haulers are behind —
+ * every parked tick is a tick of zero GCL/RCL progress.  Lowered from 25 to
+ * 16: a single hauler round-trip is ~25 ticks, so by 16 the upgrader has
+ * waited most of one cycle and should self-rescue.
  */
-const PARK_TIMEOUT = 25;
+const PARK_TIMEOUT = 16;
 
 /**
  * After this many ticks parked at an empty controller container, the upgrader
- * lowers its threshold for drawing from spawn/extensions from 40 % to 25 %,
- * converting buffer energy into control points rather than idling.
+ * lowers its threshold for drawing from spawn/extensions from 35 % to 20 %,
+ * converting buffer energy into control points rather than idling.  Reduced
+ * from 10→5 to respond faster to haulers that are alive but slow.
  */
-const PROGRESSIVE_DRAW_TICKS = 10;
+const PROGRESSIVE_DRAW_TICKS = 5;
 
 /**
  * When the controller container is empty but a source container has ≥ this much
  * energy, the hauler pipeline is bottlenecked — the upgrader walks to the source
- * container directly instead of parking.  This prevents idle ticks when haulers
- * can't keep up with miner output (common during the early RCL 3-4 ramp when
- * miners produce faster than the hauler fleet can carry).
+ * container directly instead of parking.  Lowered from 800→450: a source
+ * container at 450+ has enough energy for a full upgrader refill, and fetching
+ * it converts energy into CP faster than waiting for a hauler that may be
+ * prioritizing spawns/extensions.
  */
-const SOURCE_FETCH_THRESHOLD = 800;
+const SOURCE_FETCH_THRESHOLD = 450;
 
 /** Minimum energy in a nearby dropped pile / tombstone worth grabbing. */
 const MIN_NEARBY = 50;
@@ -92,13 +96,13 @@ export function runUpgrader(creep: Creep): void {
     const idleTicks = creep.memory.upgraderIdleTicks || 0;
 
     // Smart source fetch: when the controller container is empty but a source
-    // container is overflowing (≥ SOURCE_FETCH_THRESHOLD), the hauler pipeline
-    // is bottlenecked — walk to the fullest source container directly instead
+    // container has energy (≥ SOURCE_FETCH_THRESHOLD), the hauler pipeline is
+    // bottlenecked — walk to the fullest source container directly instead
     // of parking.  Each tick spent walking is cheaper than idling, and fetching
     // energy from the source forces it through the controller at full uptime.
-    // Only triggers after a few idle ticks so we don't pre-empt a hauler that
-    // is already mid-delivery.
-    if (idleTicks >= 3) {
+    // Triggers after just 2 idle ticks: a hauler mid-delivery would have
+    // arrived by then, so if the container is still empty, haulers are behind.
+    if (idleTicks >= 2) {
       const fullSourceContainers = data.sources
         .map((s) => s.container)
         .filter((c): c is StructureContainer => !!c && c.store[RESOURCE_ENERGY] >= SOURCE_FETCH_THRESHOLD)
@@ -113,15 +117,16 @@ export function runUpgrader(creep: Creep): void {
 
     // Progressive spawn/extension drain: when the controller container is dry
     // and the upgrader is parked, convert idle buffer energy into control
-    // points.  At 0–9 parked ticks threshold = 40 % (drain modest surplus);
-    // at 10+ ticks threshold drops to 25 % so the upgrader doesn't idle for a
-    // full PARK_TIMEOUT while spawn buffers sit half-full.  The spawn manager
-    // runs BEFORE creep dispatch, so spawning always claims its energy first.
+    // points.  At 0–4 parked ticks threshold = 35 % (drain modest surplus);
+    // at 5+ ticks threshold drops to 20 % so the upgrader doesn't idle for a
+    // full PARK_TIMEOUT while spawn buffers sit with spare energy.  The spawn
+    // manager runs BEFORE creep dispatch, so spawning always claims its energy
+    // first — upgraders only take what spawning left behind.
     if (!data.storage) {
       const spawnExt = [...data.spawns, ...data.extensions];
       const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!, 0);
       const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-      const threshold = idleTicks >= PROGRESSIVE_DRAW_TICKS ? 0.25 : 0.4;
+      const threshold = idleTicks >= PROGRESSIVE_DRAW_TICKS ? 0.20 : 0.35;
       if (totalCap > 0 && totalE > totalCap * threshold) {
         const src = spawnExt.find((s) => s.store[RESOURCE_ENERGY] > 0);
         if (src) {

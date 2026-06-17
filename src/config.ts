@@ -409,14 +409,18 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
       }
 
       if (Game.gcl.level === 1) {
-        if (surplusFill >= 0.7)      upg = Math.max(upg, 6);
-        else if (surplusFill >= 0.4) upg = Math.max(upg, 5);
-        else if (surplusFill >= 0.15) upg = Math.max(upg, 4);
-        else                         upg = Math.max(upg, 3);
+        // GCL 1: every control point gates multi-room expansion — be aggressive.
+        // Even when the controller container is nearly empty, the colony may be
+        // converting energy at high throughput (upgraders drain the container as
+        // fast as haulers fill it).  Use a floor of 5 when ANY surplus exists so
+        // we never under-convert during the critical GCL 1→2 push.
+        if (surplusFill >= 0.5)      upg = Math.max(upg, 6);
+        else if (surplusFill >= 0.2) upg = Math.max(upg, 5);
+        else                         upg = Math.max(upg, 4);
       } else {
         // GCL 2: one notch less aggressive per band.
-        if (surplusFill >= 0.6)      upg = Math.max(upg, 5);
-        else if (surplusFill >= 0.3) upg = Math.max(upg, 4);
+        if (surplusFill >= 0.5)      upg = Math.max(upg, 5);
+        else if (surplusFill >= 0.2) upg = Math.max(upg, 4);
         else                         upg = Math.max(upg, 3);
       }
     }
@@ -424,7 +428,7 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
     // Waste detection: when spawn+extensions are filling up AND there is no
     // storage, harvested energy risks capping out at the buffers — every
     // capped joule is a wasted joule.  Route surplus into control points more
-    // aggressively: +1 at 60 % fill (modest surplus), +2 at 85 % (flood).
+    // aggressively: +1 at 50 % fill (modest surplus), +2 at 75 % (flood).
     // Only fires when the controller container already has energy (the surplus
     // is real — haulers are delivering, so more upgraders can actually work).
     if (!storage && cc && ccEnergy > 0) {
@@ -432,8 +436,8 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
       const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!, 0);
       const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
       if (totalCap > 0) {
-        if (totalE > totalCap * 0.85) upg += 2;
-        else if (totalE > totalCap * 0.6) upg += 1;
+        if (totalE > totalCap * 0.75) upg += 2;
+        else if (totalE > totalCap * 0.5) upg += 1;
       }
     }
 

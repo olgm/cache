@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-17 14:35 UTC — Direct more upgraders to W43N38 controller
+
+Assign additional dedicated upgraders to the underdeveloped W43N38 controller to raise its RCL sub-score.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 86/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-17 11:19 UTC — Focus upgraders on W43N38 controller
 
 Redirect upgrade creeps to room W43N38 where RCL has fallen below the healthy threshold.
@@ -739,18 +753,4 @@ Introduce a hauler creep role to move energy from harvesters to spawn and contro
 **Issues addressed:**
 - eval: energy sub-score below healthy
 - heuristic: economy throughput
-
-### 2026-06-14 05:33 UTC — Focus upgraders on underdeveloped W43N38 controller
-
-Redirect upgrade energy and creep attention to room W43N38 where the RCL sub-score lags, bringing it in line with the colony's economic baseline.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 82/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
 <!-- SPARSE:CHANGELOG:END -->
