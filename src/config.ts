@@ -142,26 +142,50 @@ export function harvesterBody(budget: number): BodyPartConstant[] {
 }
 
 /**
- * Upgrader: balanced WORK:CARRY for high uptime. Each unit is 1 WORK + 1 CARRY
- * + 1 MOVE (200e), giving a 1:1 work-to-carry ratio that keeps the creep
- * upgrading for ~50 ticks between refills instead of the 12-25 ticks a 2:1
- * ratio gives — halving the number of refill trips and nearly doubling the
- * effective energy→control-point conversion rate. Capped at 15 WORK total
- * because a controller accepts at most 15 energy/tick of upgrade at RCL8.
+ * Upgrader body — tuned for maximum control-point conversion per energy spent.
+ *
+ * At GCL 1-2 every control point gates multi-room expansion, so the body is
+ * WORK-biased (2:1:1 WORK:CARRY:MOVE unit, 300e).  The upgrader parks at the
+ * controller container (adjacent), so refill walks are 1-2 tiles — the extra
+ * refill frequency costs almost nothing while 2:1:1 packs 33-50% more WORK into
+ * the same energy budget vs the balanced 1:1:1.
+ *
+ * At GCL 3+ we switch to the balanced 1:1:1 unit (200e) for high uptime
+ * (~50 ticks between refills), which matters more when upgraders occasionally
+ * walk to source containers.  Capped at 15 WORK total because a controller
+ * accepts at most 15 energy/tick of upgrade at RCL 8.
  */
 export function upgraderBody(budget: number, rcl: number): BodyPartConstant[] {
-  const unit: BodyPartConstant[] = [WORK, CARRY, MOVE]; // 1:1:1, 200e
-  const maxByCap = rcl >= 8 ? 4 : 8;
+  const workHeavy = Game.gcl.level <= 2;
+  const unit: BodyPartConstant[] = workHeavy
+    ? [WORK, WORK, CARRY, MOVE]   // 2:1:1, 300e
+    : [WORK, CARRY, MOVE];        // 1:1:1, 200e
   const uc = unitCost(unit);
+  const maxByCap = rcl >= 8 ? 4 : 8;
   const n = Math.max(1, Math.min(maxByCap, Math.floor(budget / uc)));
   const body = repeat(unit, budget, maxByCap);
-  // Fill remaining budget with spare WORK+CARRY pairs, then any final MOVE.
   let left = budget - n * uc;
-  while (left >= BODY_COST.work + BODY_COST.carry && body.length < MAX_PARTS - 1) {
-    body.push(WORK, CARRY);
-    left -= BODY_COST.work + BODY_COST.carry;
+
+  if (workHeavy) {
+    // WORK-first fill: every spare joule buys more upgrading speed.
+    while (left >= BODY_COST.work && body.length < MAX_PARTS) {
+      body.push(WORK);
+      left -= BODY_COST.work;
+    }
+    while (left >= BODY_COST.carry && body.length < MAX_PARTS) {
+      body.push(CARRY);
+      left -= BODY_COST.carry;
+    }
+    if (left >= BODY_COST.move && body.length < MAX_PARTS) body.push(MOVE);
+  } else {
+    // Balanced fill: WORK+CARRY pairs, then any final MOVE.
+    while (left >= BODY_COST.work + BODY_COST.carry && body.length < MAX_PARTS - 1) {
+      body.push(WORK, CARRY);
+      left -= BODY_COST.work + BODY_COST.carry;
+    }
+    if (left >= BODY_COST.move && body.length < MAX_PARTS) body.push(MOVE);
   }
-  if (left >= BODY_COST.move && body.length < MAX_PARTS) body.push(MOVE);
+
   return body;
 }
 
