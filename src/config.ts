@@ -381,35 +381,59 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
       else               upg = 2;
     }
 
-    // GCL push: when GCL is low every control point counts — expansion is gated
-    // on GCL.  Instead of a bonus (which can be small when the economy appears
-    // tight), use a hard floor that guarantees a minimum upgrader count.  Even
-    // a controller container at <20% fill leaves ~4 e/tick throughput per
-    // upgrader at RCL4, so the floor is sustainable.  Control points earned now
-    // compound into earlier multi-room expansion — the single biggest strategic
-    // lever in the early game.
+    // GCL push: when GCL is low every control point counts — expansion is
+    // gated on GCL.  Control points earned now compound into earlier multi-room
+    // expansion — the single biggest strategic lever in the early game.
     //
-    // RATCHET (v0.3.1): the old floors (5/4 at GCL 1/2) still left idle
-    // energyCapacity during the early GCL grind; pushing to 6/5 ensures every
-    // spare joule is converted to control points.  The hard cap at 6 prevents
-    // over-commitment, and the economy at RCL 4+ with proper hauler routing
-    // (GCL-push controller-container delivery) can sustain this.
-    if (Game.gcl.level === 1) {
-      upg = Math.max(upg, 6);
-    } else if (Game.gcl.level === 2) {
-      upg = Math.max(upg, 5);
+    // BUT a blind hard floor that ignores the economy's actual surplus is
+    // self-defeating: if the controller container is empty (haulers can't keep
+    // up), spawning more upgraders just adds hungry mouths that fight over
+    // scraps, burning spawn time and CPU for zero net gain.  The best
+    // real-time signal of whether the colony can sustain more upgraders is the
+    // controller container fill — it tells us energy is reliably arriving.
+    //
+    // When the container is full (≥70 %), the GCL push is aggressive because
+    // the surplus is real.  When it's nearly empty (<15 %), the floor is the
+    // base sustainable count — adding more mouths would starve everyone.
+    // Without a controller container, we use spawn+extension fill as a proxy
+    // (the only buffer the upgraders can draw from).
+    if (Game.gcl.level === 1 || Game.gcl.level === 2) {
+      let surplusFill: number;
+      if (cc) {
+        surplusFill = ccEnergy / ccCap;
+      } else {
+        const spawnExt = [...data.spawns, ...data.extensions];
+        const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!, 0);
+        const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
+        surplusFill = totalCap > 0 ? totalE / totalCap : 0;
+      }
+
+      if (Game.gcl.level === 1) {
+        if (surplusFill >= 0.7)      upg = Math.max(upg, 6);
+        else if (surplusFill >= 0.4) upg = Math.max(upg, 5);
+        else if (surplusFill >= 0.15) upg = Math.max(upg, 4);
+        else                         upg = Math.max(upg, 3);
+      } else {
+        // GCL 2: one notch less aggressive per band.
+        if (surplusFill >= 0.6)      upg = Math.max(upg, 5);
+        else if (surplusFill >= 0.3) upg = Math.max(upg, 4);
+        else                         upg = Math.max(upg, 3);
+      }
     }
 
-    // Waste detection: when spawn+extensions are near full (>75%) AND there is
-    // no storage, harvested energy risks capping out at the buffers.  A modest
-    // bump routes that surplus into control points instead.  Only fires when
-    // the controller container already has energy (the surplus is real).
+    // Waste detection: when spawn+extensions are filling up AND there is no
+    // storage, harvested energy risks capping out at the buffers — every
+    // capped joule is a wasted joule.  Route surplus into control points more
+    // aggressively: +1 at 60 % fill (modest surplus), +2 at 85 % (flood).
+    // Only fires when the controller container already has energy (the surplus
+    // is real — haulers are delivering, so more upgraders can actually work).
     if (!storage && cc && ccEnergy > 0) {
       const spawnExt = [...data.spawns, ...data.extensions];
       const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!, 0);
       const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-      if (totalCap > 0 && totalE > totalCap * 0.75) {
-        upg += 1;
+      if (totalCap > 0) {
+        if (totalE > totalCap * 0.85) upg += 2;
+        else if (totalE > totalCap * 0.6) upg += 1;
       }
     }
 
