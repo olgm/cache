@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-17 10:18 UTC — Focus upgraders on underdeveloped W43N38 controller
+
+Shift additional creeps to upgrade duty in room W43N38 to correct its below-healthy RCL score.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 86/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-17 09:20 UTC — Direct more upgraders to W43N38 controller
 
 Redirect additional creeps to upgrade the underdeveloped controller in room W43N38, bringing its below-healthy RCL score back on track.
@@ -739,18 +753,4 @@ Redirect additional upgraders to room W43N38 to accelerate its lagging controlle
 
 **Issues addressed:**
 - eval: rcl sub-score below healthy
-
-### 2026-06-14 02:27 UTC — Deploy remote mining in W43N38
-
-Add harvesters and haulers to W43N38 to increase its energy throughput from underperforming sources.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** remote-mining weakness (`remote-mining`)
-- **Eval score:** 45/100
-
-**Why:** Room W43N38 energy throughput is low; add harvesters/haulers or sources.
-
-**Issues addressed:**
-- eval: energy sub-score below healthy
 <!-- SPARSE:CHANGELOG:END -->
