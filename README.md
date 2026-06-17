@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-17 08:38 UTC — Increase upgraders in room W43N38 for RCL growth
+
+Increase the number of dedicated upgraders in room W43N38 to raise its underdeveloped controller level.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 86/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-17 07:24 UTC — Focus upgraders on underdeveloped W43N38 controller
 
 Redirect upgrade creeps to prioritize room W43N38 whose controller level lags, boosting RCL throughput in the early-game phase.
@@ -734,20 +748,6 @@ Redirect energy and creep labor toward the room controller to accelerate upgrade
 - **Phase:** early
 - **Focus:** expansion weakness (`expansion`)
 - **Eval score:** 57/100
-
-**Why:** Global Control Level is low (gcl=1); prioritize controller upgrading to expand.
-
-**Issues addressed:**
-- eval: gcl sub-score below healthy
-
-### 2026-06-14 00:19 UTC — Allocate more creeps to controller upgrading
-
-Shift spawn priority and creep roles to increase controller upgrade throughput, directly addressing the low GCL sub-score in early game.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** expansion weakness (`expansion`)
-- **Eval score:** 68/100
 
 **Why:** Global Control Level is low (gcl=1); prioritize controller upgrading to expand.
 
