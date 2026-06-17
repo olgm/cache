@@ -365,9 +365,9 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
     // compound into earlier multi-room expansion — the single biggest strategic
     // lever in the early game.
     if (Game.gcl.level === 1) {
-      upg = Math.max(upg, 4);
+      upg = Math.max(upg, 5);
     } else if (Game.gcl.level === 2) {
-      upg = Math.max(upg, 3);
+      upg = Math.max(upg, 4);
     }
 
     // Waste detection: when spawn+extensions are near full (>75%) AND there is

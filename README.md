@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-17 02:35 UTC — Focus upgraders on underdeveloped room W43N38
+
+Shift upgrade energy and creep allocation to room W43N38 where the controller level lags behind other rooms.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 86/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-17 01:15 UTC — Focus upgraders on underdeveloped room W43N38
 
 Redirect upgrade creeps to W43N38 where the controller is behind, improving its RCL sub-score to match the rest of the colony.
@@ -739,18 +753,4 @@ Deploy dedicated remote harvester and hauler creeps to boost energy throughput f
 
 **Issues addressed:**
 - eval: energy sub-score below healthy
-
-### 2026-06-13 18:00 UTC — Redirect energy to room controller upgrades
-
-Shift creep task allocation so surplus energy flows into upgrading room controllers rather than idle stockpiling, directly addressing the low GCL score.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** expansion weakness (`expansion`)
-- **Eval score:** 68/100
-
-**Why:** Global Control Level is low (gcl=1); prioritize controller upgrading to expand.
-
-**Issues addressed:**
-- eval: gcl sub-score below healthy
 <!-- SPARSE:CHANGELOG:END -->
