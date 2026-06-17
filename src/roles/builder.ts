@@ -82,11 +82,22 @@ function pickSite(creep: Creep): ConstructionSite | null {
   // instead unlocks static mining and a steady energy stream. Once any container
   // exists, fall back to the normal economy-first order (extensions compound).
   const bootstrapping = data.sources.every((s) => !s.container);
+  // After bootstrap, the controller container is the next critical unlock: it
+  // gives upgraders a dedicated supply beside the controller, roughly doubling
+  // their uptime and the colony's control-point throughput.  Bump its priority
+  // above extensions so builders finish it before adding energyCapacity.
+  const controllerContainerSite = !bootstrapping
+    ? findControllerContainerSite(creep, data)
+    : null;
   let best: ConstructionSite | null = null;
   let bestKey = Infinity;
   for (const s of sites) {
     let prio = BUILD_PRIORITY[s.structureType] ?? 9;
-    if (bootstrapping && s.structureType === STRUCTURE_CONTAINER) prio = 0.5; // before extensions
+    if (bootstrapping && s.structureType === STRUCTURE_CONTAINER) {
+      prio = 0.5; // before extensions
+    } else if (s === controllerContainerSite) {
+      prio = 0.75; // after source containers, before extensions
+    }
     // Tie-break by remaining work then range, folded into one comparable key.
     const key = prio * 1e6 + (s.progressTotal - s.progress);
     if (key < bestKey) {
@@ -95,6 +106,25 @@ function pickSite(creep: Creep): ConstructionSite | null {
     }
   }
   return best;
+}
+
+/**
+ * Find the construction site (if any) for a container within range 3 of the
+ * controller that isn't a source container — the controller container that will
+ * become the upgraders' dedicated supply.
+ */
+function findControllerContainerSite(creep: Creep, data: import("../utils/roomData").RoomData): ConstructionSite | null {
+  const ctrl = creep.room.controller;
+  if (!ctrl) return null;
+  // Fast path: data.constructionSites is already scanned; filter in JS.
+  for (const s of data.constructionSites) {
+    if (s.structureType !== STRUCTURE_CONTAINER) continue;
+    if (!s.pos.inRangeTo(ctrl.pos, 3)) continue;
+    // Exclude source containers (they're within range 1 of a source).
+    if (data.sources.some((sd) => s.pos.inRangeTo(sd.source.pos, 1))) continue;
+    return s;
+  }
+  return null;
 }
 
 function pickRepair(creep: Creep): Structure | null {
