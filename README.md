@@ -42,6 +42,20 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-18 02:17 UTC — Prioritize upgrading in room W43N38
+
+Shift more creep energy toward upgrading the under-leveled controller in room W43N38 to close the RCL gap.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** early
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 86/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-17 23:15 UTC — Prioritize upgrades in room W43N38
 
 Redirect additional upgraders to room W43N38 to accelerate its lagging controller level.
@@ -736,19 +750,4 @@ Redirect upgrade energy to room W43N38 where the RCL sub-score is below healthy,
 
 **Issues addressed:**
 - eval: rcl sub-score below healthy
-
-### 2026-06-14 09:35 UTC — Add harvesters and haulers to W43N38
-
-Deploy additional harvester and hauler creeps in room W43N38 to increase low energy throughput and boost the economy sub-score.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** logistics weakness (`logistics`)
-- **Eval score:** 63/100
-
-**Why:** Room W43N38 energy throughput is low; add harvesters/haulers or sources.
-
-**Issues addressed:**
-- eval: energy sub-score below healthy
-- heuristic: economy throughput
 <!-- SPARSE:CHANGELOG:END -->
