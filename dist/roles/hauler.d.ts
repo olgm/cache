@@ -8,8 +8,12 @@
  *
  * Coordination: haulers reserve their target container so two don't converge on
  * the same one — the first to claim it gets it, others pick a different source.
- * The threshold for collection is dynamic: when no container has ≥50 energy, the
- * hauler picks the fullest available (even if < 50) and waits there, eliminating
- * the idle gap that low-WORK miners create during early-game.
+ * The threshold for collection is dynamic: when no container has ≥25 energy, the
+ * hauler picks the fullest available and waits there, eliminating the idle gap
+ * that low-WORK miners create during early-game.
+ *
+ * Target selection is proximity-weighted: among containers above threshold the
+ * hauler picks the CLOSEST one with enough energy, not just the fullest — this
+ * cuts travel time and raises throughput.
  */
 export declare function runHauler(creep: Creep): void;
