@@ -25,14 +25,61 @@ export function runHarvester(creep: Creep): void {
   const data = getRoomData(creep.room);
 
   if (creep.memory.working) deliver(creep, data);
-  else harvest(creep);
+  else harvest(creep, data);
 }
 
-function harvest(creep: Creep): void {
-  const source = creep.pos.findClosestByRange(FIND_SOURCES_ACTIVE);
-  if (source) {
-    if (creep.harvest(source) === ERR_NOT_IN_RANGE) travel(creep, source);
+/**
+ * Mine the harvester's assigned source.
+ *
+ * Each harvester picks a source on first assignment and sticks with it for life,
+ * spreading harvesters across all sources instead of all converging on the
+ * nearest one.  When the assigned source is depleted the harvester waits —
+ * the next tick it will find energy there again.  If the source somehow
+ * disappears (e.g. room is abandoned), pick a new one.
+ */
+function harvest(creep: Creep, data: RoomData): void {
+  let source: Source | null = creep.memory.sourceId
+    ? Game.getObjectById(creep.memory.sourceId)
+    : null;
+
+  // Re-assign if the source vanished or has no energy.
+  if (!source || source.energy === 0) {
+    source = pickHarvesterSource(creep, data);
+    if (source) creep.memory.sourceId = source.id;
   }
+  if (!source) return;
+
+  if (creep.harvest(source) === ERR_NOT_IN_RANGE) travel(creep, source);
+}
+
+/**
+ * Pick the active source with the fewest harvesters assigned to it so
+ * harvesters spread evenly across all sources in the room.
+ */
+function pickHarvesterSource(creep: Creep, data: RoomData): Source | null {
+  // Count harvesters per source (including in-flight spawns).
+  const counts = new Map<string, number>();
+  for (const name in Game.creeps) {
+    const c = Game.creeps[name];
+    if (c.memory.role === "harvester" && c.memory.sourceId) {
+      counts.set(
+        c.memory.sourceId as string,
+        (counts.get(c.memory.sourceId as string) || 0) + 1,
+      );
+    }
+  }
+
+  let best: Source | null = null;
+  let bestCount = Infinity;
+  for (const sd of data.sources) {
+    if (sd.source.energy === 0) continue;
+    const c = counts.get(sd.source.id) || 0;
+    if (c < bestCount) {
+      bestCount = c;
+      best = sd.source;
+    }
+  }
+  return best;
 }
 
 function deliver(creep: Creep, data: RoomData): void {
