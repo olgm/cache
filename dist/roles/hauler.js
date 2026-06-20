@@ -76,10 +76,10 @@ function runHauler(creep) {
 /** Pick up energy from a source container or dropped pile. */
 function collect(creep, data) {
     const reserved = buildReservedSet(creep.name);
-    // --- Dropped energy (drop-mining overflow) — grab the biggest pile. ---
+    // --- Dropped energy (drop-mining overflow) — grab the closest pile. ---
     const piles = creep.room.find(FIND_DROPPED_RESOURCES, {
         filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount >= 50,
-    });
+    }).sort((a, b) => creep.pos.getRangeTo(a) - creep.pos.getRangeTo(b));
     // --- Source containers: skip ones reserved by another hauler. ---
     const candidates = data.sources
         .map((s) => s.container)
@@ -90,8 +90,10 @@ function collect(creep, data) {
     if (qualified.length === 0 && candidates.length > 0) {
         qualified = candidates.filter((c) => c.store[RESOURCE_ENERGY] > 0);
     }
-    // Sort fullest-first to keep containers from capping out.
-    const bestContainer = qualified.sort((a, b) => b.store[RESOURCE_ENERGY] - a.store[RESOURCE_ENERGY])[0];
+    // Pick the CLOSEST container above threshold to cut travel time.
+    // Travel dominates the hauler's cycle; a closer container with "enough"
+    // energy always beats a fuller one 10 tiles farther away.
+    const bestContainer = qualified.sort((a, b) => creep.pos.getRangeTo(a) - creep.pos.getRangeTo(b))[0];
     const bestPile = piles.sort((a, b) => b.amount - a.amount)[0];
     // Prefer the pile if it beats the container, otherwise take the container.
     if (bestPile && (!bestContainer || bestPile.amount > bestContainer.store[RESOURCE_ENERGY])) {
@@ -153,23 +155,22 @@ function chooseSink(creep, data) {
     }
     const carriedEnergy = creep.store[RESOURCE_ENERGY];
     // GCL push: at low GCL every control point gates multi-room expansion.
-    // Route energy to the controller container more aggressively — fill the
-    // spawn to keep spawning alive (≥ 300e, enough for any small creep), then
-    // divert surplus to the controller instead of letting it pile up in
-    // extensions.  The spawn runs first in the tick order, so spawning always
-    // claims its energy before we fill the controller container.
+    // Route energy to the controller container aggressively, but keep
+    // spawn AND extensions alive (they enable spawning bigger creeps).
+    // The spawn runs first in the tick order, so spawning always claims its
+    // energy before we fill the controller container.
     const gclPush = Game.gcl.level <= 2;
     if (gclPush && data.controllerContainer && data.controllerContainer.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
-        // Fill the spawn first (if it has room), then go to the controller
-        // container even when extensions are not full.  This keeps the spawn
-        // alive while routing the bulk of surplus energy into GCL progress.
-        const spawnFree = data.spawns.reduce((sum, s) => sum + s.store.getFreeCapacity(RESOURCE_ENERGY), 0);
-        if (spawnFree >= Math.min(carriedEnergy, 200)) {
-            const spawn = data.spawns.find((s) => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0);
-            if (spawn)
-                return spawn;
+        // Fill spawn + extensions first if they have a meaningful deficit.
+        // "Meaningful" = at least one structure has room for the hauler's cargo,
+        // or total free ≥ 200 (prevents spawning stalls).
+        const spawnExtFree = [...data.spawns, ...data.extensions].reduce((sum, s) => sum + s.store.getFreeCapacity(RESOURCE_ENERGY), 0);
+        if (spawnExtFree >= Math.min(carriedEnergy, 200)) {
+            const target = creep.pos.findClosestByRange([...data.spawns, ...data.extensions].filter((s) => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0));
+            if (target)
+                return target;
         }
-        // Spawn is reasonably full — route to the controller container.
+        // Spawn & extensions are reasonably full — route to the controller container.
         return data.controllerContainer;
     }
     // Spawn & extensions are the colony heartbeat, but routing a full hauler to
