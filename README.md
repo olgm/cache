@@ -42,6 +42,23 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-21 12:54 UTC — Fix construction pipeline to build and operate towers
+
+Repair the builder/spawn logic so that towers are actually constructed and brought online, unlocking the existing tower defense code that is currently dormant.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** missing capability: tower defense (`defense`)
+- **Eval score:** 86/100
+
+**Why:** Cache has CODE for tower defense, but the live colony has none operational (towers built: 0). The construction/spawn pipeline is not actually producing it — fix what prevents it from being built and used; do NOT re-add the code.
+
+**Issues addressed:**
+- roadmap: 'defense' expected since 'early', 1 phase(s) overdue
+- live: coded but not built — towers built: 0
+- heuristic: combat readiness
+- cooldown: recently worked (−0.2)
+
 ### 2026-06-21 09:56 UTC — Fix Spawn Pipeline To Build Towers
 
 Repair the construction and spawning pipeline so that existing tower defense code actually gets towers built and operational in the colony.
@@ -729,20 +746,6 @@ Prioritize creep upgrade work in room W43N38 to raise its underdeveloped RCL and
 ### 2026-06-16 09:11 UTC — Focus upgraders on W43N38 underdeveloped controller
 
 Redirect upgrade creeps to room W43N38 to raise its below-healthy RCL sub-score and boost control point growth.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-16 07:11 UTC — Focus upgraders on W43N38 underdeveloped controller
-
-Redirect upgrade-focused creeps to room W43N38 where the controller level lags behind the rest of the colony.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early
