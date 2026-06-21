@@ -42,6 +42,23 @@ _Auto-generated from the Cache source tree (22 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-21 09:56 UTC — Fix Spawn Pipeline To Build Towers
+
+Repair the construction and spawning pipeline so that existing tower defense code actually gets towers built and operational in the colony.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** missing capability: tower defense (`defense`)
+- **Eval score:** 86/100
+
+**Why:** Cache has CODE for tower defense, but the live colony has none operational (towers built: 0). The construction/spawn pipeline is not actually producing it — fix what prevents it from being built and used; do NOT re-add the code.
+
+**Issues addressed:**
+- roadmap: 'defense' expected since 'early', 1 phase(s) overdue
+- live: coded but not built — towers built: 0
+- heuristic: combat readiness
+- cooldown: recently worked (−0.2)
+
 ### 2026-06-21 07:11 UTC — Wire construction pipeline to build towers
 
 Fix the spawn/construction pipeline so that tower structures actually get placed and built, turning the already-coded tower defense logic from dead code into operational defenses.
@@ -736,19 +753,4 @@ Redirect upgrade-focused creeps to room W43N38 where the controller level lags b
 
 **Issues addressed:**
 - eval: rcl sub-score below healthy
-
-### 2026-06-16 06:15 UTC — Add harvesters and haulers to W43N38
-
-Deploy dedicated harvester and hauler creeps in room W43N38 to increase energy throughput and resolve the low logistics sub-score.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** logistics weakness (`logistics`)
-- **Eval score:** 62/100
-
-**Why:** Room W43N38 energy throughput is low; add harvesters/haulers or sources.
-
-**Issues addressed:**
-- eval: energy sub-score below healthy
-- heuristic: economy throughput
 <!-- SPARSE:CHANGELOG:END -->
