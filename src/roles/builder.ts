@@ -21,9 +21,9 @@ import { gatherEnergy } from "../utils/energy";
  */
 const BUILD_PRIORITY: Partial<Record<StructureConstant, number>> = {
   [STRUCTURE_SPAWN]: 0,
-  [STRUCTURE_EXTENSION]: 1,
-  [STRUCTURE_CONTAINER]: 2,
-  [STRUCTURE_TOWER]: 3,
+  [STRUCTURE_TOWER]: 1,       // towers before extensions — defense is critical
+  [STRUCTURE_EXTENSION]: 2,
+  [STRUCTURE_CONTAINER]: 3,
   [STRUCTURE_STORAGE]: 4,
   [STRUCTURE_LINK]: 5,
   [STRUCTURE_ROAD]: 6,
