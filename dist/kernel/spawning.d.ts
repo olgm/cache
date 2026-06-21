@@ -9,4 +9,14 @@
  * immediately spawns a self-sufficient harvester sized to whatever energy is on
  * hand — the safety net that lets a colony recover from a wipe.
  */
+import { CreepRole } from "../types";
+import { RoleTargets } from "../config";
+import { Census } from "../utils/census";
 export declare function runSpawnManager(): void;
+/**
+ * Pick the highest-priority role this room is under target on (or null if all
+ * are satisfied). Exported for unit testing — it is the seam where the
+ * ROLE_PRIORITY ordering decides whether builders ever get spawned ahead of the
+ * upgrader fleet (see spawn-priority.test).
+ */
+export declare function pickEconomyRole(targets: RoleTargets, census: Census, home: string, reserved: Record<string, number>): CreepRole | null;

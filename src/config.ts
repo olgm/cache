@@ -498,8 +498,19 @@ export const ROLE_PRIORITY: Record<CreepRole, number> = {
   hauler: 2,
   defender: 2, // urgent when present
   remoteHarvester: 3,
-  upgrader: 4,  // before builder: controller progress gates RCL & GCL — every tick matters
-  builder: 5,
+  // Builders BEFORE upgraders. The builder target is construction-gated (0 when
+  // nothing is queued — see roleTargets), so a single spawn must fund the colony's
+  // PLANNED structures — towers (defense) and storage (logistics) — before the
+  // discretionary upgrader fleet. With upgrader ahead of builder, the GCL-1 push
+  // inflates the upgrader target to 6 and permanently starves the lowest-priority
+  // builder: the spawn never works down to it, so tower/storage construction sites
+  // sit at progress 0 forever (the observed RCL-5-with-0-towers pathology — the
+  // construction planner placed the sites, but no builder was ever spawned to
+  // build them). Idle builders fall back to upgrading the controller, so RCL/GCL
+  // still progress while the base is being built; dedicated upgraders follow once
+  // the construction backlog is funded.
+  builder: 4,
+  upgrader: 5,
   pioneer: 6,
   claimer: 7,
   scout: 8,

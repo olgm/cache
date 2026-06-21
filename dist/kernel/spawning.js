@@ -12,6 +12,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runSpawnManager = runSpawnManager;
+exports.pickEconomyRole = pickEconomyRole;
 const types_1 = require("../types");
 const config_1 = require("../config");
 const census_1 = require("../utils/census");
@@ -95,6 +96,12 @@ function spawnEmergency(spawn, room, data) {
 // ---------------------------------------------------------------------------
 // Economy roles
 // ---------------------------------------------------------------------------
+/**
+ * Pick the highest-priority role this room is under target on (or null if all
+ * are satisfied). Exported for unit testing — it is the seam where the
+ * ROLE_PRIORITY ordering decides whether builders ever get spawned ahead of the
+ * upgrader fleet (see spawn-priority.test).
+ */
 function pickEconomyRole(targets, census, home, reserved) {
     const roles = Object.keys(targets).filter((r) => (targets[r] || 0) > 0);
     roles.sort((a, b) => config_1.ROLE_PRIORITY[a] - config_1.ROLE_PRIORITY[b]);

@@ -101,7 +101,13 @@ function spawnEmergency(spawn: StructureSpawn, room: Room, data: RoomData): bool
 // Economy roles
 // ---------------------------------------------------------------------------
 
-function pickEconomyRole(
+/**
+ * Pick the highest-priority role this room is under target on (or null if all
+ * are satisfied). Exported for unit testing — it is the seam where the
+ * ROLE_PRIORITY ordering decides whether builders ever get spawned ahead of the
+ * upgrader fleet (see spawn-priority.test).
+ */
+export function pickEconomyRole(
   targets: RoleTargets,
   census: Census,
   home: string,
