@@ -21,6 +21,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.runHauler = runHauler;
 const movement_1 = require("../utils/movement");
 const roomData_1 = require("../utils/roomData");
+const builder_1 = require("./builder");
 // ---------------------------------------------------------------------------
 // Shared reservation state (per-tick, so haulers coordinate within this tick)
 // ---------------------------------------------------------------------------
@@ -200,7 +201,9 @@ function chooseSink(creep, data) {
  */
 function dumpSurplus(creep, data) {
     // 1. Fill construction sites (cheapest way to convert surplus into progress).
-    const site = creep.pos.findClosestByRange(data.constructionSites);
+    //    Build in BUILD_PRIORITY order (towers/storage before extensions/roads), not
+    //    just the nearest site, so surplus also advances the critical structures.
+    const site = (0, builder_1.pickSiteByPriority)(creep.pos, data.constructionSites);
     if (site) {
         if (creep.build(site) === ERR_NOT_IN_RANGE)
             (0, movement_1.travel)(creep, site);

@@ -455,6 +455,17 @@ function roleTargets(data, current) {
                     upg += 1;
             }
         }
+        // No dedicated supply (neither a controller container NOR storage): upgraders
+        // draw from distant source containers shared with the haulers and burn most
+        // ticks walking, so beyond a handful they just fight over scarce energy and
+        // clog roads. The GCL push above keys off the spawn+extension FILL proxy,
+        // which balloons this to 6 exactly when energy piles up — but energy piles up
+        // *because* there is no consumer, which is better answered by building the
+        // controller container (a builder's job) than by spawning upgraders that
+        // cannot be fed. Cap the no-supply case so the surplus routes into
+        // construction; the push resumes its full range once a real supply exists.
+        if (!cc && !storage)
+            upg = Math.min(upg, rcl >= 6 ? 5 : 4);
         // Hard cap at 6: a single room produces at most ~20e/tick from two sources.
         // Even with perfect efficiency, more than 6 upgraders means each gets < 3.3
         // energy/tick — they'd spend more ticks walking than upgrading.

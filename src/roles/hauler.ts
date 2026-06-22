@@ -19,6 +19,7 @@
 
 import { travel } from "../utils/movement";
 import { getRoomData, RoomData } from "../utils/roomData";
+import { pickSiteByPriority } from "./builder";
 
 // ---------------------------------------------------------------------------
 // Shared reservation state (per-tick, so haulers coordinate within this tick)
@@ -226,7 +227,9 @@ function chooseSink(creep: Creep, data: RoomData): Structure | null {
  */
 function dumpSurplus(creep: Creep, data: RoomData): boolean {
   // 1. Fill construction sites (cheapest way to convert surplus into progress).
-  const site = creep.pos.findClosestByRange(data.constructionSites);
+  //    Build in BUILD_PRIORITY order (towers/storage before extensions/roads), not
+  //    just the nearest site, so surplus also advances the critical structures.
+  const site = pickSiteByPriority(creep.pos, data.constructionSites);
   if (site) {
     if (creep.build(site) === ERR_NOT_IN_RANGE) travel(creep, site);
     return true;

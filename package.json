@@ -6,7 +6,7 @@
     "build": "tsc -p tsconfig.json",
     "lint": "echo 'lint ok'",
     "typecheck": "tsc --noEmit",
-    "test": "tsc -p tsconfig.json && node --test test/spawn-priority.test.js"
+    "test": "tsc -p tsconfig.json && node --test test/spawn-priority.test.js test/build-order.test.js"
   },
   "devDependencies": {
     "@types/screeps": "^3.3.0",

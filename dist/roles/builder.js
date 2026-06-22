@@ -9,6 +9,7 @@
  * tick. Gathers energy from buffers (never from spawn/extensions).
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.pickSiteByPriority = pickSiteByPriority;
 exports.runBuilder = runBuilder;
 const movement_1 = require("../utils/movement");
 const roomData_1 = require("../utils/roomData");
@@ -31,6 +32,28 @@ const BUILD_PRIORITY = {
     [STRUCTURE_RAMPART]: 7,
     [STRUCTURE_WALL]: 8,
 };
+/**
+ * The highest-priority construction site for `pos`: lowest BUILD_PRIORITY wins,
+ * ties broken by proximity. Shared with the hauler's surplus-dump so that
+ * opportunistic building (a hauler with nowhere to deliver) also advances towers
+ * and storage first, instead of whatever site merely happens to be nearest.
+ * (The builder's own pickSite adds bootstrap/controller-container nuance on top
+ * of this base ordering.)
+ */
+function pickSiteByPriority(pos, sites) {
+    var _a;
+    let best = null;
+    let bestKey = Infinity;
+    for (const s of sites) {
+        const prio = (_a = BUILD_PRIORITY[s.structureType]) !== null && _a !== void 0 ? _a : 9;
+        const key = prio * 1e6 + pos.getRangeTo(s); // priority dominates; range breaks ties
+        if (key < bestKey) {
+            bestKey = key;
+            best = s;
+        }
+    }
+    return best;
+}
 /** Repair roads/containers once they drop below this fraction of max hits. */
 const REPAIR_THRESHOLD = 0.5;
 /** Target hits for freshly-built ramparts (towers maintain them beyond this). */

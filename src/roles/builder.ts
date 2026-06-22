@@ -31,6 +31,31 @@ const BUILD_PRIORITY: Partial<Record<StructureConstant, number>> = {
   [STRUCTURE_WALL]: 8,
 };
 
+/**
+ * The highest-priority construction site for `pos`: lowest BUILD_PRIORITY wins,
+ * ties broken by proximity. Shared with the hauler's surplus-dump so that
+ * opportunistic building (a hauler with nowhere to deliver) also advances towers
+ * and storage first, instead of whatever site merely happens to be nearest.
+ * (The builder's own pickSite adds bootstrap/controller-container nuance on top
+ * of this base ordering.)
+ */
+export function pickSiteByPriority(
+  pos: RoomPosition,
+  sites: ConstructionSite[],
+): ConstructionSite | null {
+  let best: ConstructionSite | null = null;
+  let bestKey = Infinity;
+  for (const s of sites) {
+    const prio = BUILD_PRIORITY[s.structureType] ?? 9;
+    const key = prio * 1e6 + pos.getRangeTo(s); // priority dominates; range breaks ties
+    if (key < bestKey) {
+      bestKey = key;
+      best = s;
+    }
+  }
+  return best;
+}
+
 /** Repair roads/containers once they drop below this fraction of max hits. */
 const REPAIR_THRESHOLD = 0.5;
 /** Target hits for freshly-built ramparts (towers maintain them beyond this). */
