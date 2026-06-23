@@ -40,20 +40,25 @@ function repeat(unit: BodyPartConstant[], budget: number, maxRepeat: number): Bo
 // ---------------------------------------------------------------------------
 
 /**
- * Stationary container miner: maximise WORK (up to 5 — a full source drain at
- * 10 energy/tick) plus one CARRY (to fill its container) and proportional MOVE.
- * Fill leftover budget with extra WORK so we never waste spawn capacity.
+ * Stationary container miner: WORK up to the source REGEN LIMIT (5 WORK drains a
+ * source's 10 energy/tick exactly — HARVEST_POWER 2 × 5), plus one CARRY to fill
+ * its container and proportional MOVE.
+ *
+ * WORK is HARD-CAPPED at 5: a source cannot yield more than 10 energy/tick, so a
+ * 6th+ WORK part is pure dead weight. The old code filled leftover budget with
+ * extra WORK, producing a 16-WORK / 1800e miner that did a 700e job — and once
+ * the colony built out its extensions (capacity 1800), that price tag deadlocked
+ * the spawn: it could not afford the miner it wanted, idled, and the population
+ * death-spiralled. A cheap miner is one the colony can always replace.
  */
 export function minerBody(budget: number): BodyPartConstant[] {
-  // Find the largest whole-unit miner that fits, then fill leftover budget.
+  // Largest whole-unit miner (≤5 WORK) the budget affords.
   let bestW = 1;
-  let bestCost = 0;
   for (let w = 5; w >= 1; w--) {
     const m = Math.min(3, Math.max(1, Math.ceil(w / 2)));
     const cost = w * BODY_COST.work + BODY_COST.carry + m * BODY_COST.move;
     if (cost <= budget) {
       bestW = w;
-      bestCost = cost;
       break;
     }
   }
@@ -61,17 +66,9 @@ export function minerBody(budget: number): BodyPartConstant[] {
   const body: BodyPartConstant[] = [];
   for (let i = 0; i < bestW; i++) body.push(WORK);
   body.push(CARRY);
-  // Add MOVE proportional to WORK (1:2 ratio, min 1, max 3 since stationary).
+  // MOVE proportional to WORK (1:2 ratio, min 1, max 3 — a miner barely moves).
   const baseMove = Math.min(3, Math.max(1, Math.ceil(bestW / 2)));
   for (let i = 0; i < baseMove; i++) body.push(MOVE);
-
-  // Fill leftover budget with extra WORK (the single MOVE from the base
-  // handles the extra weight on a road — miners barely move).
-  let leftover = budget - bestCost;
-  while (leftover >= BODY_COST.work && body.length < MAX_PARTS) {
-    body.push(WORK);
-    leftover -= BODY_COST.work;
-  }
 
   return body;
 }

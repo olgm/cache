@@ -27,11 +27,17 @@ Object.assign(globalThis, {
   STRUCTURE_RAMPART: "rampart",
   STRUCTURE_WALL: "constructedWall",
   RESOURCE_ENERGY: "energy",
+  WORK: "work",
+  CARRY: "carry",
+  MOVE: "move",
   Game: { gcl: { level: 1 } },
 });
 
 const { pickSiteByPriority } = require("../dist/roles/builder.js");
-const { roleTargets } = require("../dist/config.js");
+const { roleTargets, minerBody } = require("../dist/config.js");
+
+const PART_COST = { work: 100, carry: 50, move: 50 };
+const bodyCost = (b) => b.reduce((c, p) => c + PART_COST[p], 0);
 
 // ---- (a) surplus-dump priority ordering --------------------------------------
 const creepPos = { getRangeTo: (s) => s._range };
@@ -89,4 +95,21 @@ test("upgrader target is capped without a controller container or storage", () =
 test("upgrader push is unrestricted once a controller container supplies them", () => {
   const t = roleTargets(roomData({ controllerContainer: { store: fakeStore(2000, 2000) } }), {});
   assert.ok(t.upgrader >= 5, `expected >= 5 with a full controller container, got ${t.upgrader}`);
+});
+
+// ---- miner body is regen-capped (no more 1800e miners) -----------------------
+test("minerBody caps WORK at the source regen limit (<= 5)", () => {
+  const work = minerBody(1800).filter((p) => p === "work").length;
+  assert.ok(work <= 5, `expected <= 5 WORK, got ${work}`);
+});
+
+test("minerBody at a large budget is cheap (~700, not ~1800)", () => {
+  // The whole point: a miner the colony can always afford to replace.
+  assert.ok(bodyCost(minerBody(1800)) <= 800, `expected <= 800e, got ${bodyCost(minerBody(1800))}`);
+});
+
+test("minerBody still scales DOWN on a small (bootstrap) budget", () => {
+  const body = minerBody(300);
+  assert.ok(body.includes("work"), "must have at least 1 WORK");
+  assert.ok(bodyCost(body) <= 300, `must fit the budget, got ${bodyCost(body)}`);
 });

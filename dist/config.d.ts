@@ -9,9 +9,16 @@
 import { CreepRole } from "./types";
 import { RoomData } from "./utils/roomData";
 /**
- * Stationary container miner: maximise WORK (up to 5 — a full source drain at
- * 10 energy/tick) plus one CARRY (to fill its container) and proportional MOVE.
- * Fill leftover budget with extra WORK so we never waste spawn capacity.
+ * Stationary container miner: WORK up to the source REGEN LIMIT (5 WORK drains a
+ * source's 10 energy/tick exactly — HARVEST_POWER 2 × 5), plus one CARRY to fill
+ * its container and proportional MOVE.
+ *
+ * WORK is HARD-CAPPED at 5: a source cannot yield more than 10 energy/tick, so a
+ * 6th+ WORK part is pure dead weight. The old code filled leftover budget with
+ * extra WORK, producing a 16-WORK / 1800e miner that did a 700e job — and once
+ * the colony built out its extensions (capacity 1800), that price tag deadlocked
+ * the spawn: it could not afford the miner it wanted, idled, and the population
+ * death-spiralled. A cheap miner is one the colony can always replace.
  */
 export declare function minerBody(budget: number): BodyPartConstant[];
 /** Hauler: CARRY/MOVE at a 2:1 ratio (assumes roads; half-speed when loaded off-road). */
