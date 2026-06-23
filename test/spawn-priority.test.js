@@ -17,7 +17,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { ROLE_PRIORITY } = require("../dist/config.js");
-const { pickEconomyRole } = require("../dist/kernel/spawning.js");
+const { pickEconomyRole, economyBudget } = require("../dist/kernel/spawning.js");
 
 /** Minimal Census stub — pickEconomyRole only reads census.byRoom[home]. */
 function censusFor(home, counts) {
@@ -66,4 +66,30 @@ test("pickEconomyRole returns null when every role is at target", () => {
     harvester: 2, miner: 1, hauler: 6, upgrader: 6, builder: 3,
   });
   assert.equal(pickEconomyRole(targets, census, "W43N38", {}), null);
+});
+
+// ---- economyBudget: don't deadlock the spawn when haulers collapse -----------
+const withContainers = [{ container: {} }, { container: {} }];
+const noContainers = [{ container: undefined }];
+
+test("economyBudget is capacity-sized in normal operation (haulers present)", () => {
+  const data = { sources: withContainers, energyAvailable: 500, energyCapacity: 1800 };
+  assert.equal(economyBudget(data, 3), 1800);
+});
+
+test("economyBudget sizes to available energy when haulers have collapsed", () => {
+  // The death-spiral case: full-capacity body (1800) is unaffordable, so size to
+  // what's on hand and spawn a small creep now to restart energy flow.
+  const data = { sources: withContainers, energyAvailable: 1210, energyCapacity: 1800 };
+  assert.equal(economyBudget(data, 0), 1210);
+});
+
+test("economyBudget sizes to available during bootstrap (no source container)", () => {
+  const data = { sources: noContainers, energyAvailable: 250, energyCapacity: 1800 };
+  assert.equal(economyBudget(data, 0), 250);
+});
+
+test("economyBudget floors at a minimal body when nearly empty", () => {
+  const data = { sources: noContainers, energyAvailable: 40, energyCapacity: 1800 };
+  assert.equal(economyBudget(data, 0), 200); // WORK+CARRY+MOVE floor
 });

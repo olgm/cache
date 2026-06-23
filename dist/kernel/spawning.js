@@ -13,6 +13,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runSpawnManager = runSpawnManager;
 exports.pickEconomyRole = pickEconomyRole;
+exports.economyBudget = economyBudget;
 const types_1 = require("../types");
 const config_1 = require("../config");
 const census_1 = require("../utils/census");
@@ -113,18 +114,37 @@ function pickEconomyRole(targets, census, home, reserved) {
     }
     return null;
 }
-function trySpawnRole(spawn, room, data, role, census, reserved, reservedSources) {
-    // Bootstrap regime: until a source container exists (static mining), the colony
-    // often cannot fill its full energy capacity — yet insisting on a capacity-sized
-    // body means the next economy creep (critically, a BUILDER) never becomes
-    // affordable, so the source containers never get built and the bootstrap never
-    // ends. While bootstrapping, size to energy ON HAND (like the emergency path) so
-    // the workforce keeps growing; revert to capacity-sized creeps for efficiency
-    // once static mining is online.
+/**
+ * Spawn-energy budget for a normal economy creep.
+ *
+ * Capacity-sized (energyCapacityAvailable) in normal operation — bigger creeps
+ * are more efficient, and a healthy hauler fleet keeps the spawn topped up so we
+ * can afford them. But sized to energy ON HAND in two cases where waiting for a
+ * full body would stall forever:
+ *   - bootstrap: no source container yet, so the room cannot fill its capacity;
+ *   - degraded: post-bootstrap but the hauler fleet has collapsed to zero, so
+ *     energy no longer reaches the spawn. Without sizing down here, the spawn
+ *     idles waiting for a body it can never afford and the colony death-spirals
+ *     (the observed RCL5 collapse: a full-capacity body of 1800 was unaffordable
+ *     once the haulers were gone, so nothing spawned and nothing recovered).
+ * In both, sizing to available lets the spawn produce a small creep NOW, which
+ * restarts energy flow and recovers (mirrors the emergency-bootstrap path).
+ */
+function economyBudget(data, haulers) {
     const bootstrapping = data.sources.every((s) => !s.container);
-    const budget = bootstrapping
-        ? Math.max(types_1.BODY_COST.work + types_1.BODY_COST.carry + types_1.BODY_COST.move, data.energyAvailable)
-        : data.energyCapacity;
+    const degraded = !bootstrapping && haulers === 0;
+    if (bootstrapping || degraded) {
+        return Math.max(types_1.BODY_COST.work + types_1.BODY_COST.carry + types_1.BODY_COST.move, data.energyAvailable);
+    }
+    return data.energyCapacity;
+}
+function trySpawnRole(spawn, room, data, role, census, reserved, reservedSources) {
+    // Size the body to what the colony can actually fund right now (see
+    // economyBudget): capacity-sized in normal operation, but sized to energy on
+    // hand during bootstrap OR a hauler collapse, so the spawn never idles forever
+    // waiting for a body it cannot afford (the death-spiral).
+    const haulers = (0, census_1.roleCount)(census, room.name, "hauler") + (reserved.hauler || 0);
+    const budget = economyBudget(data, haulers);
     const body = (0, config_1.bodyForRole)(role, budget, data.rcl);
     if (data.energyAvailable < bodyCost(body))
         return false; // can't afford even this
