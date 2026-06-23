@@ -74,22 +74,30 @@ const noContainers = [{ container: undefined }];
 
 test("economyBudget is capacity-sized in normal operation (haulers present)", () => {
   const data = { sources: withContainers, energyAvailable: 500, energyCapacity: 1800 };
-  assert.equal(economyBudget(data, 3), 1800);
+  assert.equal(economyBudget(data, 3, false), 1800);
 });
 
 test("economyBudget sizes to available energy when haulers have collapsed", () => {
   // The death-spiral case: full-capacity body (1800) is unaffordable, so size to
   // what's on hand and spawn a small creep now to restart energy flow.
   const data = { sources: withContainers, energyAvailable: 1210, energyCapacity: 1800 };
-  assert.equal(economyBudget(data, 0), 1210);
+  assert.equal(economyBudget(data, 0, false), 1210);
+});
+
+test("economyBudget sizes to available while recovering, even with haulers present", () => {
+  // The partial-collapse case the haulers===0 trigger misses: one tiny hauler
+  // exists, but the room still can't fund a capacity body — the stall-driven
+  // recovery flag keeps sizing down so it doesn't plateau.
+  const data = { sources: withContainers, energyAvailable: 600, energyCapacity: 1800 };
+  assert.equal(economyBudget(data, 5, true), 600);
 });
 
 test("economyBudget sizes to available during bootstrap (no source container)", () => {
   const data = { sources: noContainers, energyAvailable: 250, energyCapacity: 1800 };
-  assert.equal(economyBudget(data, 0), 250);
+  assert.equal(economyBudget(data, 0, false), 250);
 });
 
 test("economyBudget floors at a minimal body when nearly empty", () => {
   const data = { sources: noContainers, energyAvailable: 40, energyCapacity: 1800 };
-  assert.equal(economyBudget(data, 0), 200); // WORK+CARRY+MOVE floor
+  assert.equal(economyBudget(data, 0, false), 200); // WORK+CARRY+MOVE floor
 });

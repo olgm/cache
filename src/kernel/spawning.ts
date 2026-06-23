@@ -35,8 +35,18 @@ export function runSpawnManager(): void {
   }
 }
 
+/**
+ * Consecutive ticks the spawn may want a creep it cannot afford before it gives
+ * up waiting and builds a smaller, affordable one. Long enough that a healthy
+ * room's normal refill wait never trips it; short enough to escape a population
+ * collapse in minutes rather than hours.
+ */
+const SPAWN_STALL_LIMIT = 50;
+
 function runRoom(room: Room, census: Census): void {
   const data = getRoomData(room);
+  // A spawn that is mid-build is making progress — never count it as stalled.
+  if (data.spawns.some((s) => s.spawning)) room.memory.spawnStall = 0;
   const idleSpawns = data.spawns.filter((s) => !s.spawning);
   if (idleSpawns.length === 0) return;
 
@@ -46,18 +56,28 @@ function runRoom(room: Room, census: Census): void {
   const reserved: Record<string, number> = {};
   const reservedSources = new Set<string>();
 
+  // Recovery: the spawn has wanted a creep it could not afford for too long
+  // (a hauler/population collapse). Size bodies to energy on hand until it gets
+  // going again, so it never idles forever waiting for a body it can't fund.
+  const recovering = (room.memory.spawnStall || 0) >= SPAWN_STALL_LIMIT;
+
+  // Did the spawn want an economy creep this tick but fail to afford it?
+  let stuck = false;
   for (const spawn of idleSpawns) {
     // 1. Emergency: the delivery pipeline has collapsed — recover NOW.
     if (needsEmergency(room.name, census, reserved)) {
       if (spawnEmergency(spawn, room, data)) bump(reserved, "harvester");
+      else stuck = true;
       continue;
     }
 
     // 2. Economy roles, by priority.
     const role = pickEconomyRole(targets, census, room.name, reserved);
     if (role) {
-      if (trySpawnRole(spawn, room, data, role, census, reserved, reservedSources)) {
+      if (trySpawnRole(spawn, room, data, role, census, reserved, reservedSources, recovering)) {
         bump(reserved, role);
+      } else {
+        stuck = true;
       }
       continue;
     }
@@ -68,6 +88,10 @@ function runRoom(room: Room, census: Census): void {
       spawnRequest(spawn, req);
     }
   }
+
+  // Count consecutive stalled ticks; any successful spawn (or nothing wanted)
+  // clears it. Crossing SPAWN_STALL_LIMIT flips on recovery sizing next tick.
+  room.memory.spawnStall = stuck ? (room.memory.spawnStall || 0) + 1 : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,17 +156,20 @@ export function pickEconomyRole(
  * full body would stall forever:
  *   - bootstrap: no source container yet, so the room cannot fill its capacity;
  *   - degraded: post-bootstrap but the hauler fleet has collapsed to zero, so
- *     energy no longer reaches the spawn. Without sizing down here, the spawn
- *     idles waiting for a body it can never afford and the colony death-spirals
- *     (the observed RCL5 collapse: a full-capacity body of 1800 was unaffordable
- *     once the haulers were gone, so nothing spawned and nothing recovered).
- * In both, sizing to available lets the spawn produce a small creep NOW, which
- * restarts energy flow and recovers (mirrors the emergency-bootstrap path).
+ *     energy no longer reaches the spawn (immediate trigger);
+ *   - recovering: the spawn has been stalled (wanting an unaffordable creep) past
+ *     SPAWN_STALL_LIMIT — the robust escape that also covers a partial collapse
+ *     (e.g. one tiny hauler), where `degraded` has already switched off but the
+ *     room still can't fill a capacity body. Without it the colony plateaus at a
+ *     few creeps for hours (the observed RCL5 collapse: a full-capacity body of
+ *     1800 was unaffordable, so nothing spawned and nothing recovered).
+ * In all three, sizing to available lets the spawn produce a smaller creep NOW,
+ * which restarts energy flow and recovers (mirrors the emergency-bootstrap path).
  */
-export function economyBudget(data: RoomData, haulers: number): number {
+export function economyBudget(data: RoomData, haulers: number, recovering: boolean): number {
   const bootstrapping = data.sources.every((s) => !s.container);
   const degraded = !bootstrapping && haulers === 0;
-  if (bootstrapping || degraded) {
+  if (bootstrapping || degraded || recovering) {
     return Math.max(BODY_COST.work + BODY_COST.carry + BODY_COST.move, data.energyAvailable);
   }
   return data.energyCapacity;
@@ -156,13 +183,14 @@ function trySpawnRole(
   census: Census,
   reserved: Record<string, number>,
   reservedSources: Set<string>,
+  recovering: boolean,
 ): boolean {
   // Size the body to what the colony can actually fund right now (see
   // economyBudget): capacity-sized in normal operation, but sized to energy on
-  // hand during bootstrap OR a hauler collapse, so the spawn never idles forever
-  // waiting for a body it cannot afford (the death-spiral).
+  // hand during bootstrap, a hauler collapse, or a prolonged stall, so the spawn
+  // never idles forever waiting for a body it cannot afford (the death-spiral).
   const haulers = roleCount(census, room.name, "hauler") + (reserved.hauler || 0);
-  const budget = economyBudget(data, haulers);
+  const budget = economyBudget(data, haulers, recovering);
   const body = bodyForRole(role, budget, data.rcl);
   if (data.energyAvailable < bodyCost(body)) return false; // can't afford even this
 

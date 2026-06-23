@@ -30,11 +30,14 @@ export declare function pickEconomyRole(targets: RoleTargets, census: Census, ho
  * full body would stall forever:
  *   - bootstrap: no source container yet, so the room cannot fill its capacity;
  *   - degraded: post-bootstrap but the hauler fleet has collapsed to zero, so
- *     energy no longer reaches the spawn. Without sizing down here, the spawn
- *     idles waiting for a body it can never afford and the colony death-spirals
- *     (the observed RCL5 collapse: a full-capacity body of 1800 was unaffordable
- *     once the haulers were gone, so nothing spawned and nothing recovered).
- * In both, sizing to available lets the spawn produce a small creep NOW, which
- * restarts energy flow and recovers (mirrors the emergency-bootstrap path).
+ *     energy no longer reaches the spawn (immediate trigger);
+ *   - recovering: the spawn has been stalled (wanting an unaffordable creep) past
+ *     SPAWN_STALL_LIMIT — the robust escape that also covers a partial collapse
+ *     (e.g. one tiny hauler), where `degraded` has already switched off but the
+ *     room still can't fill a capacity body. Without it the colony plateaus at a
+ *     few creeps for hours (the observed RCL5 collapse: a full-capacity body of
+ *     1800 was unaffordable, so nothing spawned and nothing recovered).
+ * In all three, sizing to available lets the spawn produce a smaller creep NOW,
+ * which restarts energy flow and recovers (mirrors the emergency-bootstrap path).
  */
-export declare function economyBudget(data: RoomData, haulers: number): number;
+export declare function economyBudget(data: RoomData, haulers: number, recovering: boolean): number;

@@ -56,6 +56,9 @@ declare global {
     lastPlan?: number;
     /** Tick roads were last planned (re-pathing is expensive; throttle hard). */
     lastRoadPlan?: number;
+    /** Consecutive ticks the spawn wanted an economy creep it could not afford.
+     *  Drives the recovery fallback (size to energy on hand) in the spawn manager. */
+    spawnStall?: number;
     /** Map of sourceId → container id beside it (cached so dark/odd ticks are cheap). */
     sourceContainers?: Record<string, Id<StructureContainer>>;
   }
