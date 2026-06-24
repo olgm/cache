@@ -56,7 +56,7 @@ function planRoom(room) {
     const terrain = room.getTerrain();
     const anchor = new RoomPosition(mem.anchor.x, mem.anchor.y, room.name);
     const tiles = collectBuildTiles(room, anchor, terrain, data);
-    for (const type of [STRUCTURE_TOWER, STRUCTURE_EXTENSION, STRUCTURE_STORAGE]) {
+    for (const type of [STRUCTURE_TOWER, STRUCTURE_STORAGE, STRUCTURE_EXTENSION]) {
         if (budget <= 0)
             break;
         const want = allowance(room, type) - countBuilt(room, type) - countSites(room, type);
