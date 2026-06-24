@@ -45,6 +45,20 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-24 21:23 UTC — Add remote harvesters and haulers to W43N38
+
+Deploy dedicated remote-mining harvesters and haulers to room W43N38 to raise its energy throughput toward a healthy control-point-economy baseline.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** remote-mining weakness (`remote-mining`)
+- **Eval score:** 72/100
+
+**Why:** Room W43N38 energy throughput is low; add harvesters/haulers or sources.
+
+**Issues addressed:**
+- eval: energy sub-score below healthy
+
 ### 2026-06-24 19:25 UTC — Fix storage construction to actually build structures
 
 Repair the spawn/construction pipeline so that storage structures are actually produced and deployed, turning the dormant buffering code into an operational in-game capability.
@@ -737,20 +751,6 @@ Redirect upgrade energy to room W43N38's underdeveloped controller to raise its 
 ### 2026-06-16 15:35 UTC — Dedicate upgraders to room W43N38 controller
 
 Redirect upgrade creeps to room W43N38 where the controller is underdeveloped and the RCL sub-score is below healthy.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-16 14:18 UTC — Prioritize W43N38 controller upgrading
-
-Shift spawn priority and energy allocation to send more upgraders to room W43N38, where the RCL sub-score is below healthy and the controller is underdeveloped.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early

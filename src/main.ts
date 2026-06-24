@@ -41,7 +41,7 @@ const ROLE_RUNNERS: Record<CreepRole, (creep: Creep) => void> = {
   scout: runScout,
   claimer: runClaimer,
   pioneer: runPioneer,
-  remoteHarvester: () => {}, // stub — not yet implemented
+  remoteHarvester: runRemoteHarvester,
 };
 
 /** Bumped to trigger a one-time Memory migration on deploy. */
@@ -52,6 +52,7 @@ export function loop(): void {
   migrate();
 
   runSubsystem("expansion", runExpansionManager);
+  runSubsystem("remoteMining", runRemoteMiningManager);
   runSubsystem("construction", runConstruction);
   runSubsystem("towers", runTowers);
   runSubsystem("spawn", runSpawnManager);

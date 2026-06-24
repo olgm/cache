@@ -18,6 +18,7 @@ const spawning_1 = require("./kernel/spawning");
 const construction_1 = require("./kernel/construction");
 const towers_1 = require("./kernel/towers");
 const expansion_1 = require("./expansion");
+const remoteMining_1 = require("./kernel/remoteMining");
 const stats_1 = require("./stats");
 const miner_1 = require("./roles/miner");
 const hauler_1 = require("./roles/hauler");
@@ -28,6 +29,7 @@ const defender_1 = require("./roles/defender");
 const scout_1 = require("./roles/scout");
 const claimer_1 = require("./roles/claimer");
 const pioneer_1 = require("./roles/pioneer");
+const remoteHarvester_1 = require("./roles/remoteHarvester");
 const ROLE_RUNNERS = {
     miner: miner_1.runMiner,
     hauler: hauler_1.runHauler,
@@ -38,7 +40,7 @@ const ROLE_RUNNERS = {
     scout: scout_1.runScout,
     claimer: claimer_1.runClaimer,
     pioneer: pioneer_1.runPioneer,
-    remoteHarvester: () => { }, // stub — not yet implemented
+    remoteHarvester: remoteHarvester_1.runRemoteHarvester,
 };
 /** Bumped to trigger a one-time Memory migration on deploy. */
 const SCHEMA_VERSION = 4;
@@ -47,6 +49,7 @@ function loop() {
     cleanupCreepMemory();
     migrate();
     runSubsystem("expansion", expansion_1.runExpansionManager);
+    runSubsystem("remoteMining", remoteMining_1.runRemoteMiningManager);
     runSubsystem("construction", construction_1.runConstruction);
     runSubsystem("towers", towers_1.runTowers);
     runSubsystem("spawn", spawning_1.runSpawnManager);

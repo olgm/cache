@@ -15,6 +15,7 @@ import { bodyForRole, roleTargets, ROLE_PRIORITY, RoleTargets } from "../config"
 import { buildCensus, Census, roleCount } from "../utils/census";
 import { getRoomData, myRooms, RoomData } from "../utils/roomData";
 import { getExpansionSpawnRequest, SpawnRequest } from "../expansion";
+import { getRemoteMiningSpawnRequest } from "./remoteMining";
 
 let nextId = 0;
 
@@ -82,7 +83,18 @@ function runRoom(room: Room, census: Census): void {
       continue;
     }
 
-    // 3. Expansion (scout / claimer / pioneer) once the economy is satisfied.
+    // 3. Remote mining — harvest energy from unowned adjacent rooms.
+    const remoteReq = getRemoteMiningSpawnRequest(room, census, reserved);
+    if (remoteReq && data.energyAvailable >= bodyCost(remoteReq.body)) {
+      if (spawn.spawnCreep(remoteReq.body, name("remoteHarvester"), { memory: remoteReq.memory }) === OK) {
+        bump(reserved, "remoteHarvester");
+        continue;
+      }
+      stuck = true;
+      continue;
+    }
+
+    // 4. Expansion (scout / claimer / pioneer) once the economy is satisfied.
     const req = getExpansionSpawnRequest(room, data);
     if (req && data.energyAvailable >= bodyCost(req.body)) {
       spawnRequest(spawn, req);

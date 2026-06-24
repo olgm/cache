@@ -19,6 +19,7 @@ const config_1 = require("../config");
 const census_1 = require("../utils/census");
 const roomData_1 = require("../utils/roomData");
 const expansion_1 = require("../expansion");
+const remoteMining_1 = require("./remoteMining");
 let nextId = 0;
 function bodyCost(body) {
     let c = 0;
@@ -82,7 +83,17 @@ function runRoom(room, census) {
             }
             continue;
         }
-        // 3. Expansion (scout / claimer / pioneer) once the economy is satisfied.
+        // 3. Remote mining — harvest energy from unowned adjacent rooms.
+        const remoteReq = (0, remoteMining_1.getRemoteMiningSpawnRequest)(room, census, reserved);
+        if (remoteReq && data.energyAvailable >= bodyCost(remoteReq.body)) {
+            if (spawn.spawnCreep(remoteReq.body, name("remoteHarvester"), { memory: remoteReq.memory }) === OK) {
+                bump(reserved, "remoteHarvester");
+                continue;
+            }
+            stuck = true;
+            continue;
+        }
+        // 4. Expansion (scout / claimer / pioneer) once the economy is satisfied.
         const req = (0, expansion_1.getExpansionSpawnRequest)(room, data);
         if (req && data.energyAvailable >= bodyCost(req.body)) {
             spawnRequest(spawn, req);
