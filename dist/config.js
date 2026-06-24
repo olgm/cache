@@ -15,6 +15,7 @@ exports.workerBody = workerBody;
 exports.harvesterBody = harvesterBody;
 exports.upgraderBody = upgraderBody;
 exports.defenderBody = defenderBody;
+exports.remoteHarvesterBody = remoteHarvesterBody;
 exports.scoutBody = scoutBody;
 exports.claimerBody = claimerBody;
 exports.pioneerBody = pioneerBody;
@@ -198,6 +199,33 @@ function upgraderBody(budget, rcl) {
 /** Melee defender: ATTACK with 1:1 MOVE so it stays mobile while fighting. */
 function defenderBody(budget) {
     return repeat([ATTACK, MOVE], budget, 10);
+}
+/**
+ * Remote harvester body — CARRY-heavy with extra MOVE for inter-room travel.
+ *
+ * Each unit (WORK, CARRY, CARRY, MOVE, MOVE, 350e) gives a 2:1 CARRY:WORK ratio
+ * with enough MOVE to stay mobile across rooms even when fully loaded. Leftover
+ * budget fills CARRY first (long walks reward big payloads), then WORK.
+ */
+function remoteHarvesterBody(budget) {
+    const unit = [WORK, CARRY, CARRY, MOVE, MOVE]; // 350e
+    const uc = unitCost(unit);
+    const n = Math.max(1, Math.min(4, Math.floor(budget / uc)));
+    const body = [];
+    for (let i = 0; i < n; i++)
+        body.push(...unit);
+    let left = budget - n * uc;
+    while (left >= types_1.BODY_COST.carry && body.length < MAX_PARTS) {
+        body.push(CARRY);
+        left -= types_1.BODY_COST.carry;
+    }
+    while (left >= types_1.BODY_COST.work && body.length < MAX_PARTS) {
+        body.push(WORK);
+        left -= types_1.BODY_COST.work;
+    }
+    if (left >= types_1.BODY_COST.move && body.length < MAX_PARTS)
+        body.push(MOVE);
+    return body;
 }
 /** Scout: a single MOVE — disposable intel gatherer. */
 function scoutBody() {

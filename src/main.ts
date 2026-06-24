@@ -16,6 +16,7 @@ import { runSpawnManager } from "./kernel/spawning";
 import { runConstruction } from "./kernel/construction";
 import { runTowers } from "./kernel/towers";
 import { runExpansionManager } from "./expansion";
+import { runRemoteMiningManager } from "./kernel/remoteMining";
 import { writeStats } from "./stats";
 import { CreepRole } from "./types";
 
@@ -28,6 +29,7 @@ import { runDefender } from "./roles/defender";
 import { runScout } from "./roles/scout";
 import { runClaimer } from "./roles/claimer";
 import { runPioneer } from "./roles/pioneer";
+import { runRemoteHarvester } from "./roles/remoteHarvester";
 
 const ROLE_RUNNERS: Record<CreepRole, (creep: Creep) => void> = {
   miner: runMiner,

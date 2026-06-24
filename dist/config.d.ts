@@ -53,6 +53,14 @@ export declare function harvesterBody(budget: number): BodyPartConstant[];
 export declare function upgraderBody(budget: number, rcl: number): BodyPartConstant[];
 /** Melee defender: ATTACK with 1:1 MOVE so it stays mobile while fighting. */
 export declare function defenderBody(budget: number): BodyPartConstant[];
+/**
+ * Remote harvester body — CARRY-heavy with extra MOVE for inter-room travel.
+ *
+ * Each unit (WORK, CARRY, CARRY, MOVE, MOVE, 350e) gives a 2:1 CARRY:WORK ratio
+ * with enough MOVE to stay mobile across rooms even when fully loaded. Leftover
+ * budget fills CARRY first (long walks reward big payloads), then WORK.
+ */
+export declare function remoteHarvesterBody(budget: number): BodyPartConstant[];
 /** Scout: a single MOVE — disposable intel gatherer. */
 export declare function scoutBody(): BodyPartConstant[];
 /** Claimer: one CLAIM + MOVE (600+50 = 650e; needs RCL2+ capacity). */

@@ -191,6 +191,33 @@ export function defenderBody(budget: number): BodyPartConstant[] {
   return repeat([ATTACK, MOVE], budget, 10);
 }
 
+/**
+ * Remote harvester body — CARRY-heavy with extra MOVE for inter-room travel.
+ *
+ * Each unit (WORK, CARRY, CARRY, MOVE, MOVE, 350e) gives a 2:1 CARRY:WORK ratio
+ * with enough MOVE to stay mobile across rooms even when fully loaded. Leftover
+ * budget fills CARRY first (long walks reward big payloads), then WORK.
+ */
+export function remoteHarvesterBody(budget: number): BodyPartConstant[] {
+  const unit: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE, MOVE]; // 350e
+  const uc = unitCost(unit);
+  const n = Math.max(1, Math.min(4, Math.floor(budget / uc)));
+  const body: BodyPartConstant[] = [];
+  for (let i = 0; i < n; i++) body.push(...unit);
+
+  let left = budget - n * uc;
+  while (left >= BODY_COST.carry && body.length < MAX_PARTS) {
+    body.push(CARRY);
+    left -= BODY_COST.carry;
+  }
+  while (left >= BODY_COST.work && body.length < MAX_PARTS) {
+    body.push(WORK);
+    left -= BODY_COST.work;
+  }
+  if (left >= BODY_COST.move && body.length < MAX_PARTS) body.push(MOVE);
+  return body;
+}
+
 /** Scout: a single MOVE — disposable intel gatherer. */
 export function scoutBody(): BodyPartConstant[] {
   return [MOVE];

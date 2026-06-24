@@ -6,7 +6,7 @@ An autonomous, *self evolving* bot for [Screeps World](screeps.com).
 <!-- SPARSE:ARCHITECTURE:START -->
 ## Architecture
 
-_Auto-generated from the Cache source tree (22 modules)._
+_Auto-generated from the Cache source tree (25 modules)._
 
 **Top level**
 - `config.ts` — Cache — economy tunables: dynamic body builders + RCL-scaled role targets.
@@ -17,6 +17,8 @@ _Auto-generated from the Cache source tree (22 modules)._
 
 **`kernel/`**
 - `kernel/construction.ts` — Cache — Construction planner (auto base-building).
+- `kernel/remoteMining.ts` — Cache — Remote mining manager.
+- `kernel/remoteMiningMemory.ts` — Cache — Remote mining memory.
 - `kernel/spawning.ts` — Cache — Spawn manager (per-room, prioritized, self-healing).
 - `kernel/towers.ts` — Cache — Tower control + safe-mode defense.
 
@@ -28,6 +30,7 @@ _Auto-generated from the Cache source tree (22 modules)._
 - `roles/hauler.ts` — Cache — Hauler role (logistics).
 - `roles/miner.ts` — Cache — Miner role (static container mining).
 - `roles/pioneer.ts` — Cache — Pioneer role.
+- `roles/remoteHarvester.ts` — Cache — Remote harvester role.
 - `roles/scout.ts` — Cache — Scout role.
 - `roles/upgrader.ts` — Cache — Upgrader role.
 
@@ -41,6 +44,21 @@ _Auto-generated from the Cache source tree (22 modules)._
 
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
+
+### 2026-06-24 17:22 UTC — Add remote harvesters and haulers to W43N38
+
+Deploy dedicated remote-mining creep roles to the W43N38 room to fix low energy throughput and raise the energy sub-score back to healthy levels.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** remote-mining weakness (`remote-mining`)
+- **Eval score:** 63/100
+
+**Why:** Room W43N38 energy throughput is low; add harvesters/haulers or sources.
+
+**Issues addressed:**
+- eval: energy sub-score below healthy
+- cooldown: recently worked (−0.2)
 
 ### 2026-06-21 12:54 UTC — Fix construction pipeline to build and operate towers
 
@@ -732,20 +750,6 @@ Redirect upgrade energy to room W43N38 to raise its underdeveloped RCL and impro
 ### 2026-06-16 10:15 UTC — Focus upgraders on W43N38 controller
 
 Prioritize creep upgrade work in room W43N38 to raise its underdeveloped RCL and close the control-point gap.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-16 09:11 UTC — Focus upgraders on W43N38 underdeveloped controller
-
-Redirect upgrade creeps to room W43N38 to raise its below-healthy RCL sub-score and boost control point growth.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early
