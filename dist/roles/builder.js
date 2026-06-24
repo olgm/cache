@@ -2,8 +2,8 @@
 /**
  * Cache — Builder role.
  *
- * Builds construction sites in a sensible order (spawn → tower → extension →
- * container → storage → road → rampart → wall), and when there is nothing to
+ * Builds construction sites in a sensible order (spawn → tower → storage →
+ * extension → container → road → rampart → wall), and when there is nothing to
  * build, performs light repairs the towers don't cover (decayed roads/containers
  * and freshly-built ramparts). Idle builders help upgrade so they never waste a
  * tick. Gathers energy from buffers (never from spawn/extensions).
@@ -15,18 +15,20 @@ const movement_1 = require("../utils/movement");
 const roomData_1 = require("../utils/roomData");
 const energy_1 = require("../utils/energy");
 /**
- * Lower number = built first. Economy-first: extensions raise energyCapacity
- * (compounding every creep's size) and containers unlock static mining, so both
- * come before the tower — with no active threat the fastest path to a strong,
- * RCL-climbing colony is economy, and safe-mode covers the bootstrap defense gap.
- * A missing spawn (expansion bootstrap) always wins.
+ * Lower number = built first. Spawn always wins. Towers come next for defence.
+ * Storage unlocks energy buffering and is the gate for multi-room expansion
+ * (the expansion manager requires it), so it follows towers. Extensions and
+ * containers come afterwards — extensions raise spawn capacity (bigger creeps),
+ * containers unlock static mining and dedicated upgrader supply. Roads, ramparts
+ * and walls are the lowest priority; builders only touch them when nothing else
+ * needs attention.
  */
 const BUILD_PRIORITY = {
     [STRUCTURE_SPAWN]: 0,
-    [STRUCTURE_TOWER]: 1, // towers before extensions — defense is critical
-    [STRUCTURE_EXTENSION]: 2,
-    [STRUCTURE_CONTAINER]: 3,
-    [STRUCTURE_STORAGE]: 4,
+    [STRUCTURE_TOWER]: 1, // defence comes first
+    [STRUCTURE_STORAGE]: 2, // energy buffer + expansion gate
+    [STRUCTURE_EXTENSION]: 3, // bigger creeps
+    [STRUCTURE_CONTAINER]: 4, // static mining + upgrader supply
     [STRUCTURE_LINK]: 5,
     [STRUCTURE_ROAD]: 6,
     [STRUCTURE_RAMPART]: 7,

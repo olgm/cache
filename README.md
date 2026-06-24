@@ -45,6 +45,21 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-24 19:25 UTC — Fix storage construction to actually build structures
+
+Repair the spawn/construction pipeline so that storage structures are actually produced and deployed, turning the dormant buffering code into an operational in-game capability.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** missing capability: storage / energy buffering (`storage`)
+- **Eval score:** 72/100
+
+**Why:** Cache has CODE for storage / energy buffering, but the live colony has none operational (rooms with storage: 0). The construction/spawn pipeline is not actually producing it — fix what prevents it from being built and used; do NOT re-add the code.
+
+**Issues addressed:**
+- roadmap: 'storage' expected since 'mid'
+- live: coded but not built — rooms with storage: 0
+
 ### 2026-06-24 18:25 UTC — Focus upgrader spawns on underdeveloped W43N38
 
 Increase upgrader creep allocation to room W43N38 to accelerate its lagging controller level and improve RCL parity.
@@ -736,20 +751,6 @@ Redirect upgrade creeps to room W43N38 where the controller is underdeveloped an
 ### 2026-06-16 14:18 UTC — Prioritize W43N38 controller upgrading
 
 Shift spawn priority and energy allocation to send more upgraders to room W43N38, where the RCL sub-score is below healthy and the controller is underdeveloped.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-16 13:21 UTC — Focus upgraders on W43N38 controller
-
-Redirect upgrade energy to room W43N38 to raise its underdeveloped RCL and improve the control-point score.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early
