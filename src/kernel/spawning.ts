@@ -187,12 +187,24 @@ function trySpawnRole(
 ): boolean {
   // Size the body to what the colony can actually fund right now (see
   // economyBudget): capacity-sized in normal operation, but sized to energy on
-  // hand during bootstrap, a hauler collapse, or a prolonged stall, so the spawn
-  // never idles forever waiting for a body it cannot afford (the death-spiral).
+  // hand during bootstrap, a hauler collapse, or a prolonged stall.
+  //
+  // CRITICAL FALLBACK: when the capacity budget produces a body the spawn cannot
+  // yet afford, we retry with an available-energy budget immediately instead of
+  // waiting for the 50-tick stall recovery.  The stall counter is reset every
+  // time ANY creep spawns (e.g. replacing a dying builder), so a room that can
+  // always fund a 300e builder but never an 1800e upgrader would cycle forever
+  // — the spawn would never reach recovery and zero upgraders would be spawned
+  // (the observed "RCL 5, 0 upgraders" pathology).
   const haulers = roleCount(census, room.name, "hauler") + (reserved.hauler || 0);
   const budget = economyBudget(data, haulers, recovering);
-  const body = bodyForRole(role, budget, data.rcl);
-  if (data.energyAvailable < bodyCost(body)) return false; // can't afford even this
+  let body = bodyForRole(role, budget, data.rcl);
+  if (data.energyAvailable < bodyCost(body)) {
+    // Fall back to an available-energy body: a smaller creep NOW is infinitely
+    // better than an idle spawn waiting for capacity it may never reach.
+    body = bodyForRole(role, data.energyAvailable, data.rcl);
+  }
+  if (data.energyAvailable < bodyCost(body)) return false; // can't afford even the minimal body
 
   const memory: CreepMemory = { role, homeRoom: room.name };
 

@@ -45,6 +45,20 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-24 18:25 UTC — Focus upgrader spawns on underdeveloped W43N38
+
+Increase upgrader creep allocation to room W43N38 to accelerate its lagging controller level and improve RCL parity.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 72/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-24 17:22 UTC — Add remote harvesters and haulers to W43N38
 
 Deploy dedicated remote-mining creep roles to the W43N38 room to fix low energy throughput and raise the energy sub-score back to healthy levels.
@@ -736,20 +750,6 @@ Shift spawn priority and energy allocation to send more upgraders to room W43N38
 ### 2026-06-16 13:21 UTC — Focus upgraders on W43N38 controller
 
 Redirect upgrade energy to room W43N38 to raise its underdeveloped RCL and improve the control-point score.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-16 10:15 UTC — Focus upgraders on W43N38 controller
-
-Prioritize creep upgrade work in room W43N38 to raise its underdeveloped RCL and close the control-point gap.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early
