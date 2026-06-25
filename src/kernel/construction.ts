@@ -196,7 +196,15 @@ function planContainers(room: Room, data: RoomData, budget: number): number {
       )
       .some((r) => r.constructionSite.structureType === STRUCTURE_CONTAINER);
     if (!nearbyContainerSite) {
-      const tile = ringTileNear(ctrl, 2, room, anchorPos);
+      // Prefer distance 2 (leaves the immediate ring as upgrader standing room),
+      // then fall back to 3 and 1 so a tightly-built or edge-hugging controller
+      // still gets a container — all are inside the range-3 supply radius that
+      // roomData uses to recognise a controller container.
+      let tile: { x: number; y: number } | null = null;
+      for (const d of [2, 3, 1]) {
+        tile = ringTileNear(ctrl, d, room, anchorPos, inRoom);
+        if (tile) break;
+      }
       if (tile && room.createConstructionSite(tile.x, tile.y, STRUCTURE_CONTAINER) === OK) {
         placed++;
         containerCount++;
@@ -209,11 +217,19 @@ function planContainers(room: Room, data: RoomData, budget: number): number {
 
 /** Best walkable tile adjacent to `pos`, preferring proximity to `toward`. */
 function bestAdjacentTile(pos: RoomPosition, room: Room, toward?: RoomPosition): { x: number; y: number } | null {
-  return ringTileNear(pos, 1, room, toward);
+  // Full room bounds (not the inset stamp margin): a source container must sit
+  // beside its source even when that source hugs a room edge.
+  return ringTileNear(pos, 1, room, toward, inRoom);
 }
 
 /** A buildable tile at Chebyshev distance `dist` from `pos`, closest to `toward`. */
-function ringTileNear(pos: RoomPosition, dist: number, room: Room, toward?: RoomPosition): { x: number; y: number } | null {
+export function ringTileNear(
+  pos: RoomPosition,
+  dist: number,
+  room: Room,
+  toward?: RoomPosition,
+  bounds: (x: number, y: number) => boolean = inBounds,
+): { x: number; y: number } | null {
   const terrain = room.getTerrain();
   let best: { x: number; y: number } | null = null;
   let bestScore = Infinity;
@@ -222,7 +238,7 @@ function ringTileNear(pos: RoomPosition, dist: number, room: Room, toward?: Room
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== dist) continue;
       const x = pos.x + dx;
       const y = pos.y + dy;
-      if (!inBounds(x, y) || !tileFree(room, x, y, terrain)) continue;
+      if (!bounds(x, y) || !tileFree(room, x, y, terrain)) continue;
       const score = toward ? Math.abs(x - toward.x) + Math.abs(y - toward.y) : 0;
       if (score < bestScore) {
         bestScore = score;
@@ -339,8 +355,21 @@ function placeSpawn(room: Room, data: RoomData): number {
 // Tile predicates
 // ---------------------------------------------------------------------------
 
-function inBounds(x: number, y: number): boolean {
+export function inBounds(x: number, y: number): boolean {
   return x >= EDGE_MARGIN && x <= 49 - EDGE_MARGIN && y >= EDGE_MARGIN && y <= 49 - EDGE_MARGIN;
+}
+
+/**
+ * The engine's real buildable area: everything except the exit-border ring at
+ * 0/49. Source & controller containers sit right beside their target, which
+ * frequently lands inside the stamp's EDGE_MARGIN (sources/controllers often
+ * hug a room edge). They must therefore use this full range rather than the
+ * inset margin — otherwise the only adjacent tile is rejected and the room
+ * never gets a container (the live containers:0 bug). createConstructionSite
+ * itself rejects 0/49, so 1..48 is exactly what the server will accept.
+ */
+export function inRoom(x: number, y: number): boolean {
+  return x >= 1 && x <= 48 && y >= 1 && y <= 48;
 }
 
 /** A tile is free to build a structure on: not a wall, no blocking structure, no site. */
