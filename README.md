@@ -45,6 +45,20 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-25 18:37 UTC — Add fallback storage placement outside checkerboard stamp
+
+Force-place the storage construction site on any walkable tile in the room when the checkerboard stamp is fully saturated with built structures, so storage can be built at RCL 5+ and unlock mid-game energy buffering.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** construction planner storage placement fallback (`storage`)
+- **Eval score:** 86/100
+
+**Why:** At RCL 5 the checkerboard stamp is saturated with 30 built extensions + 2 towers. The deadlock breaker only evicts extension SITES — but all extensions are already BUILT, leaving zero free checkerboard tiles and zero sites to evict. Storage site is never placed → builder target stays 0 → spawn fills with upgraders → storage never built (0 rooms with storage confirmed). Add a fallback: when the checkerboard stamp cannot accommodate storage, force-place it on any walkable tile anywhere in the room. Storage is the critical mid-game unlock for energy buffering and gated expansion.
+
+**Issues addressed:**
+- feature-cadence: add (phase mid)
+
 ### 2026-06-25 14:05 UTC — Construct storage buildings at RCL 5
 
 Add storage structures to the build pipeline so the colony can buffer more than 6000 energy across containers, decoupling income spikes from upgrade and spawn spending.
@@ -739,20 +753,6 @@ Assign dedicated creep upgraders to the underdeveloped W43N38 controller to rais
 ### 2026-06-16 19:17 UTC — Focus upgraders on W43N38 controller
 
 Redirect upgrade creeps to room W43N38 to raise the controller level from its currently underdeveloped state.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-16 18:17 UTC — Focus upgraders on underdeveloped W43N38 controller
-
-Redirect upgrade creeps to room W43N38 to accelerate its lagging room controller level.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early
