@@ -82,15 +82,34 @@ function planRoom(room: Room): void {
     // those sites are built — but the builder won't build them because it now
     // prioritises storage (which has no site).  Evicting one extension site
     // breaks the deadlock.
+    //
+    // CRITICAL: the deadlock breaker must scan the RAW checkerboard area, not
+    // the pre-filtered `tiles` list.  `collectBuildTiles` filters out every tile
+    // that has any construction site (via `tileFree`), so `tiles` contains ZERO
+    // extension sites — the breaker would never find one to evict.  We recompute
+    // the checkerboard positions here without the `tileFree` filter to locate an
+    // extension site occupying a stamp tile.
     if (type === STRUCTURE_STORAGE && want > 0) {
-      for (const pos of tiles) {
-        const sites = room.lookForAt(LOOK_CONSTRUCTION_SITES, pos.x, pos.y);
-        const extSite = sites.find((s) => s.structureType === STRUCTURE_EXTENSION);
-        if (extSite) {
-          extSite.remove();
-          if (room.createConstructionSite(pos.x, pos.y, type) === OK) {
-            budget--;
-            break;
+      const stampParity = (anchor.x + anchor.y) % 2;
+      let evicted = false;
+      for (let r = 1; r <= STAMP_RADIUS && !evicted; r++) {
+        for (let dx = -r; dx <= r && !evicted; dx++) {
+          for (let dy = -r; dy <= r && !evicted; dy++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            const x = anchor.x + dx;
+            const y = anchor.y + dy;
+            if (!inBounds(x, y)) continue;
+            if ((x + y) % 2 !== stampParity) continue;
+            if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
+            const sites = room.lookForAt(LOOK_CONSTRUCTION_SITES, x, y);
+            const extSite = sites.find((s) => s.structureType === STRUCTURE_EXTENSION);
+            if (extSite) {
+              extSite.remove();
+              if (room.createConstructionSite(x, y, STRUCTURE_STORAGE) === OK) {
+                budget--;
+                evicted = true;
+              }
+            }
           }
         }
       }

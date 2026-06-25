@@ -45,6 +45,20 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-25 14:05 UTC — Construct storage buildings at RCL 5
+
+Add storage structures to the build pipeline so the colony can buffer more than 6000 energy across containers, decoupling income spikes from upgrade and spawn spending.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** energy-buffering (`storage`)
+- **Eval score:** 72/100
+
+**Why:** RCL 5 unlocks storage; the colony has 0 storage buildings and 3 containers (max 2000 each), severely capping energy buffers. The code is already present but the build pipeline never constructs storage. Adding this capability multiplies sustainable upgrade/spawn throughput by decoupling energy income spikes from expenditure — essential before advancing further.
+
+**Issues addressed:**
+- feature-cadence: add (phase mid)
+
 ### 2026-06-25 11:28 UTC — Add remote harvesters to W43N38
 
 Deploy dedicated remote-mining harvesters and haulers to fix chronically low energy throughput in room W43N38.
@@ -739,20 +753,6 @@ Redirect upgrade creeps to room W43N38 to raise the controller level from its cu
 ### 2026-06-16 18:17 UTC — Focus upgraders on underdeveloped W43N38 controller
 
 Redirect upgrade creeps to room W43N38 to accelerate its lagging room controller level.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-16 17:18 UTC — Focus upgraders on W43N38 controller
-
-Direct more upgrade creeps to room W43N38 to address its underdeveloped RCL.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early
