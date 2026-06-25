@@ -117,6 +117,16 @@ function planRoom(room) {
                     }
                 }
             }
+            // FALLBACK: the checkerboard stamp is saturated with BUILT structures
+            // (no extension sites to evict).  Place storage on any walkable tile
+            // anywhere in the room.  Storage is the critical mid-game unlock for
+            // energy buffering and gated expansion — placing it off-stamp is
+            // infinitely better than never placing it at all.
+            if (!evicted) {
+                if (placeStorageAnywhere(room, data, terrain, anchor)) {
+                    budget--;
+                }
+            }
         }
     }
     // 4. Basic roads (RCL3+). Re-pathing is expensive, so throttle it hard —
@@ -270,6 +280,56 @@ function tooCloseToKeepClear(x, y, data) {
     const ctrl = data.room.controller;
     if (ctrl && Math.max(Math.abs(x - ctrl.pos.x), Math.abs(y - ctrl.pos.y)) <= 1)
         return true;
+    return false;
+}
+/**
+ * Room-wide fallback: place storage on any walkable tile when the checkerboard
+ * stamp is saturated with built structures and no extension sites exist to
+ * evict.  Searches outward from the anchor, avoiding sources and the controller
+ * but otherwise accepting any buildable tile.
+ */
+function placeStorageAnywhere(room, data, terrain, anchor) {
+    // First pass: respect the normal keep-clear zones.
+    for (let r = 0; r <= 23; r++) {
+        for (let dx = -r; dx <= r; dx++) {
+            for (let dy = -r; dy <= r; dy++) {
+                if (Math.max(Math.abs(dx), Math.abs(dy)) !== r)
+                    continue;
+                const x = anchor.x + dx;
+                const y = anchor.y + dy;
+                if (!inBounds(x, y))
+                    continue;
+                if (terrain.get(x, y) === TERRAIN_MASK_WALL)
+                    continue;
+                if (!tileFree(room, x, y, terrain))
+                    continue;
+                if (tooCloseToKeepClear(x, y, data))
+                    continue;
+                if (room.createConstructionSite(x, y, STRUCTURE_STORAGE) === OK)
+                    return true;
+            }
+        }
+    }
+    // Second pass: relax the keep-clear constraint — storage is too critical to
+    // go without just because the room is tight.
+    for (let r = 0; r <= 23; r++) {
+        for (let dx = -r; dx <= r; dx++) {
+            for (let dy = -r; dy <= r; dy++) {
+                if (Math.max(Math.abs(dx), Math.abs(dy)) !== r)
+                    continue;
+                const x = anchor.x + dx;
+                const y = anchor.y + dy;
+                if (!inBounds(x, y))
+                    continue;
+                if (terrain.get(x, y) === TERRAIN_MASK_WALL)
+                    continue;
+                if (!tileFree(room, x, y, terrain))
+                    continue;
+                if (room.createConstructionSite(x, y, STRUCTURE_STORAGE) === OK)
+                    return true;
+            }
+        }
+    }
     return false;
 }
 function placeOnTiles(room, tiles, type, count) {
