@@ -10,6 +10,12 @@
  * is running), and the spawn isn't stalled.
  *
  * Scouting is throttled (every REMOTE_SCAN_INTERVAL ticks) to keep CPU cheap.
+ *
+ * BOOTSTRAP: When no source-level intel exists for any adjacent room, we fall
+ * back to the expansion manager's room-level intel (already gathered by scouts)
+ * to pick a viable adjacent room, and let the remoteHarvester discover specific
+ * sources on arrival.  This breaks the cold-start deadlock where scanAdjacent
+ * requires in-room visibility but no creep has ever visited an adjacent room.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ensureRemoteMiningMemory = void 0;
