@@ -45,6 +45,22 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-25 04:30 UTC — Fix Storage Construction Pipeline So Rooms Build It
+
+Repair the spawn and construction logic that prevents storage structures from being queued and built, enabling the existing storage/buffering code to activate in live rooms.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** missing capability: storage / energy buffering (`storage`)
+- **Eval score:** 86/100
+
+**Why:** Cache has CODE for storage / energy buffering, but the live colony has none operational (rooms with storage: 0). The construction/spawn pipeline is not actually producing it — fix what prevents it from being built and used; do NOT re-add the code.
+
+**Issues addressed:**
+- roadmap: 'storage' expected since 'mid'
+- live: coded but not built — rooms with storage: 0
+- cooldown: recently worked (−0.4)
+
 ### 2026-06-24 21:23 UTC — Add remote harvesters and haulers to W43N38
 
 Deploy dedicated remote-mining harvesters and haulers to room W43N38 to raise its energy throughput toward a healthy control-point-economy baseline.
@@ -737,20 +753,6 @@ Direct more upgrade creeps to room W43N38 to address its underdeveloped RCL.
 ### 2026-06-16 16:36 UTC — Focus upgraders on W43N38 controller
 
 Redirect upgrade energy to room W43N38's underdeveloped controller to raise its RCL sub-score toward healthy levels.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-16 15:35 UTC — Dedicate upgraders to room W43N38 controller
-
-Redirect upgrade creeps to room W43N38 where the controller is underdeveloped and the RCL sub-score is below healthy.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early

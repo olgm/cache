@@ -40,10 +40,15 @@ function planRoom(room) {
     if (!due)
         return;
     mem.lastPlan = Game.time;
-    // Don't queue more work while there is still a healthy backlog to build.
-    if (data.constructionSites.length >= MAX_SITES_PER_PASS)
+    // Don't queue more work while there is still a healthy backlog to build,
+    // unless a critical structure (storage) has no site and cannot be placed
+    // because its tiles are blocked by lower-priority sites — we must evict.
+    const storageMissing = allowance(room, STRUCTURE_STORAGE) > 0 &&
+        countBuilt(room, STRUCTURE_STORAGE) === 0 &&
+        countSites(room, STRUCTURE_STORAGE) === 0;
+    if (data.constructionSites.length >= MAX_SITES_PER_PASS && !storageMissing)
         return;
-    let budget = MAX_SITES_PER_PASS - data.constructionSites.length;
+    let budget = Math.max(1, MAX_SITES_PER_PASS - data.constructionSites.length);
     // 1. A spawn, if this room has none (freshly-claimed expansion room).
     if (data.spawns.length === 0 && countSites(room, STRUCTURE_SPAWN) === 0 && allowance(room, STRUCTURE_SPAWN) > 0) {
         budget -= placeSpawn(room, data);
@@ -62,7 +67,31 @@ function planRoom(room) {
         const want = allowance(room, type) - countBuilt(room, type) - countSites(room, type);
         if (want <= 0)
             continue;
-        budget -= placeOnTiles(room, tiles, type, Math.min(want, budget));
+        const placed = placeOnTiles(room, tiles, type, Math.min(want, budget));
+        if (placed > 0) {
+            budget -= placed;
+            continue;
+        }
+        // No free tile found. If this is a critical structure (storage) and there
+        // are extension sites on the stamp, evict one to make room.  This recovers
+        // from the legacy extension-first ordering: a room whose checkerboard tiles
+        // are already saturated with extension sites can never place storage until
+        // those sites are built — but the builder won't build them because it now
+        // prioritises storage (which has no site).  Evicting one extension site
+        // breaks the deadlock.
+        if (type === STRUCTURE_STORAGE && want > 0) {
+            for (const pos of tiles) {
+                const sites = room.lookForAt(LOOK_CONSTRUCTION_SITES, pos.x, pos.y);
+                const extSite = sites.find((s) => s.structureType === STRUCTURE_EXTENSION);
+                if (extSite) {
+                    extSite.remove();
+                    if (room.createConstructionSite(pos.x, pos.y, type) === OK) {
+                        budget--;
+                        break;
+                    }
+                }
+            }
+        }
     }
     // 4. Basic roads (RCL3+). Re-pathing is expensive, so throttle it hard —
     //    roads change rarely and decay is handled by tower/builder repair.
