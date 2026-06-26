@@ -58,8 +58,18 @@ function scanAdjacent(room, mem) {
         const ctrl = targetRoom.controller;
         const owner = ctrl ? ctrl.owner : undefined;
         const reserved = ctrl ? !!ctrl.reservation : false;
-        // Skip owned, reserved, or hostile rooms.
-        if (owner || reserved) {
+        // Skip reserved or hostile rooms.
+        // OWNED rooms: skip if they belong to another player, but ALLOW
+        // rooms we own that have no spawn yet (bootstrapping) — their
+        // sources would otherwise sit idle while pioneers slowly build
+        // the first spawn.  Remote harvesters from the home room can
+        // mine those sources and deliver energy home right now.
+        const mySpawns = targetRoom.find(FIND_MY_SPAWNS);
+        if (owner && (!ctrl.my || mySpawns.length > 0)) {
+            mem.intel[roomName] = { lastScan: Game.time, viableSources: [] };
+            continue;
+        }
+        if (reserved) {
             mem.intel[roomName] = { lastScan: Game.time, viableSources: [] };
             continue;
         }
