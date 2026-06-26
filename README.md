@@ -45,6 +45,21 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-26 23:57 UTC — Add remote harvesters and haulers to W44N38
+
+Deploy dedicated harvester and hauler creeps to increase energy throughput from remote sources in room W44N38, addressing the low energy sub-score.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** remote-mining weakness (`remote-mining`)
+- **Eval score:** 58/100
+
+**Why:** Room W44N38 energy throughput is low; add harvesters/haulers or sources.
+
+**Issues addressed:**
+- eval: energy sub-score below healthy
+- cooldown: recently worked (−0.2)
+
 ### 2026-06-26 11:50 UTC — Deploy remote harvesters and haulers to W44N38
 
 Add dedicated remote-mining harvesters and haulers to increase energy throughput in room W44N38.
@@ -751,18 +766,4 @@ Spawn dedicated harvester and hauler creeps in room W43N38 to raise energy throu
 **Issues addressed:**
 - eval: energy sub-score below healthy
 - heuristic: economy throughput
-
-### 2026-06-16 23:16 UTC — Prioritize upgrader allocation to W43N38 controller
-
-Direct more creeps and energy to upgrade the underdeveloped controller in room W43N38, whose RCL sub-score lags below healthy thresholds.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
 <!-- SPARSE:CHANGELOG:END -->

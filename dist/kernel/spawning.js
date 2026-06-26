@@ -54,6 +54,15 @@ function runRoom(room, census) {
     if (idleSpawns.length === 0)
         return;
     const targets = (0, config_1.roleTargets)(data, census.byRoom[room.name] || {});
+    // Merge the remoteHarvester target into the economy role targets so it competes
+    // by priority (priority 3, between hauler and builder) instead of being gated
+    // behind a fully-satisfied economy.  Without this, the spawn loop never reaches
+    // step 3 (remote mining) when any economy role is under target — the common
+    // case where upgraders are perpetually 1-2 below their desired count, blocking
+    // remoteHarvester spawning forever.
+    const remoteTarget = (0, remoteMining_1.remoteHarvesterTargetForRoom)(room);
+    if (remoteTarget > 0)
+        targets.remoteHarvester = remoteTarget;
     // Per-tick reservations so two idle spawns don't duplicate a role / source.
     const reserved = {};
     const reservedSources = new Set();
@@ -72,7 +81,7 @@ function runRoom(room, census) {
                 stuck = true;
             continue;
         }
-        // 2. Economy roles, by priority.
+        // 2. Economy roles + remoteHarvester, by priority.
         const role = pickEconomyRole(targets, census, room.name, reserved);
         if (role) {
             if (trySpawnRole(spawn, room, data, role, census, reserved, reservedSources, recovering)) {
@@ -83,17 +92,7 @@ function runRoom(room, census) {
             }
             continue;
         }
-        // 3. Remote mining — harvest energy from unowned adjacent rooms.
-        const remoteReq = (0, remoteMining_1.getRemoteMiningSpawnRequest)(room, census, reserved);
-        if (remoteReq && data.energyAvailable >= bodyCost(remoteReq.body)) {
-            if (spawn.spawnCreep(remoteReq.body, name("remoteHarvester"), { memory: remoteReq.memory }) === OK) {
-                bump(reserved, "remoteHarvester");
-                continue;
-            }
-            stuck = true;
-            continue;
-        }
-        // 4. Expansion (scout / claimer / pioneer) once the economy is satisfied.
+        // 3. Expansion (scout / claimer / pioneer) once the economy is satisfied.
         const req = (0, expansion_1.getExpansionSpawnRequest)(room, data);
         if (req && data.energyAvailable >= bodyCost(req.body)) {
             spawnRequest(spawn, req);

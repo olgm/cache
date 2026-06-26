@@ -118,7 +118,7 @@ function remoteHarvestersForSource(sourceId: string, homeRoom: string): number {
 }
 
 /** Pick the best unassigned remote source for a given home room. */
-function pickRemoteSource(homeRoom: string, mem: RemoteMiningMemory): RemoteSource | null {
+export function pickRemoteSource(homeRoom: string, mem: RemoteMiningMemory): RemoteSource | null {
   let best: RemoteSource | null = null;
   let bestScore = 0;
 

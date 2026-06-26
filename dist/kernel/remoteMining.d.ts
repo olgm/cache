@@ -16,8 +16,10 @@
  * sources on arrival.  This breaks the cold-start deadlock where scanAdjacent
  * requires in-room visibility but no creep has ever visited an adjacent room.
  */
-import { ensureRemoteMiningMemory } from "./remoteMiningMemory";
+import { ensureRemoteMiningMemory, RemoteMiningMemory, RemoteSource } from "./remoteMiningMemory";
 import { buildCensus } from "../utils/census";
+/** Pick the best unassigned remote source for a given home room. */
+export declare function pickRemoteSource(homeRoom: string, mem: RemoteMiningMemory): RemoteSource | null;
 export interface RemoteMiningSpawnRequest {
     body: BodyPartConstant[];
     memory: CreepMemory;

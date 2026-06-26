@@ -19,6 +19,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ensureRemoteMiningMemory = void 0;
+exports.pickRemoteSource = pickRemoteSource;
 exports.runRemoteMiningManager = runRemoteMiningManager;
 exports.remoteHarvesterTargetForRoom = remoteHarvesterTargetForRoom;
 exports.getRemoteMiningSpawnRequest = getRemoteMiningSpawnRequest;
