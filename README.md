@@ -45,6 +45,22 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-26 06:05 UTC — Fix storage construction pipeline to build structures
+
+Repair the spawn/construction planner so storage structures actually get built instead of remaining as dead code, addressing the zero operational storage rooms in the live colony.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** missing capability: storage / energy buffering (`storage`)
+- **Eval score:** 89/100
+
+**Why:** Cache has CODE for storage / energy buffering, but the live colony has none operational (rooms with storage: 0). The construction/spawn pipeline is not actually producing it — fix what prevents it from being built and used; do NOT re-add the code.
+
+**Issues addressed:**
+- roadmap: 'storage' expected since 'mid'
+- live: coded but not built — rooms with storage: 0
+- cooldown: recently worked (−0.4)
+
 ### 2026-06-25 18:37 UTC — Add fallback storage placement outside checkerboard stamp
 
 Force-place the storage construction site on any walkable tile in the room when the checkerboard stamp is fully saturated with built structures, so storage can be built at RCL 5+ and unlock mid-game energy buffering.
@@ -744,20 +760,6 @@ Assign dedicated creep upgraders to the underdeveloped W43N38 controller to rais
 - **Phase:** early
 - **Focus:** upgrading weakness (`upgrading`)
 - **Eval score:** 81/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-16 19:17 UTC — Focus upgraders on W43N38 controller
-
-Redirect upgrade creeps to room W43N38 to raise the controller level from its currently underdeveloped state.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
 
 **Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
 

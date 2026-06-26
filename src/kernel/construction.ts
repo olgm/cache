@@ -57,11 +57,31 @@ function planRoom(room: Room): void {
     budget -= placeSpawn(room, data);
   }
 
-  // 2. Source containers (one per source) and a controller container.
+  // 2. Storage — when missing it is the critical mid-game unlock and the
+  //    expansion manager's gate.  Place it BEFORE containers because when the
+  //    site queue is full (≥12 sites) the budget shrinks to 1, and containers
+  //    would consume that last slot — storage would never get a site.
+  if (storageMissing && budget > 0) {
+    const terrain = room.getTerrain();
+    const anchor = new RoomPosition(mem.anchor!.x, mem.anchor!.y, room.name);
+    const tiles = collectBuildTiles(room, anchor, terrain, data);
+    const placed = placeOnTiles(room, tiles, STRUCTURE_STORAGE, 1);
+    if (placed > 0) {
+      budget--;
+    } else {
+      // No free tile on the stamp — try to evict an extension site, then fall
+      // back to placing storage anywhere walkable.
+      if (evictExtensionSiteForStorage(room, anchor, terrain)) budget--;
+      else if (placeStorageAnywhere(room, data, terrain, anchor)) budget--;
+    }
+  }
+
+  // 3. Source containers (one per source) and a controller container.
   budget -= planContainers(room, data, budget);
   if (budget <= 0) return;
 
-  // 3. Point structures on the checkerboard stamp.
+  // 4. Point structures on the checkerboard stamp (towers, remaining storage
+  //    if step 2 couldn't place it, and extensions).
   const terrain = room.getTerrain();
   const anchor = new RoomPosition(mem.anchor!.x, mem.anchor!.y, room.name);
   const tiles = collectBuildTiles(room, anchor, terrain, data);
@@ -74,56 +94,6 @@ function planRoom(room: Room): void {
     if (placed > 0) {
       budget -= placed;
       continue;
-    }
-    // No free tile found. If this is a critical structure (storage) and there
-    // are extension sites on the stamp, evict one to make room.  This recovers
-    // from the legacy extension-first ordering: a room whose checkerboard tiles
-    // are already saturated with extension sites can never place storage until
-    // those sites are built — but the builder won't build them because it now
-    // prioritises storage (which has no site).  Evicting one extension site
-    // breaks the deadlock.
-    //
-    // CRITICAL: the deadlock breaker must scan the RAW checkerboard area, not
-    // the pre-filtered `tiles` list.  `collectBuildTiles` filters out every tile
-    // that has any construction site (via `tileFree`), so `tiles` contains ZERO
-    // extension sites — the breaker would never find one to evict.  We recompute
-    // the checkerboard positions here without the `tileFree` filter to locate an
-    // extension site occupying a stamp tile.
-    if (type === STRUCTURE_STORAGE && want > 0) {
-      const stampParity = (anchor.x + anchor.y) % 2;
-      let evicted = false;
-      for (let r = 1; r <= STAMP_RADIUS && !evicted; r++) {
-        for (let dx = -r; dx <= r && !evicted; dx++) {
-          for (let dy = -r; dy <= r && !evicted; dy++) {
-            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-            const x = anchor.x + dx;
-            const y = anchor.y + dy;
-            if (!inBounds(x, y)) continue;
-            if ((x + y) % 2 !== stampParity) continue;
-            if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
-            const sites = room.lookForAt(LOOK_CONSTRUCTION_SITES, x, y);
-            const extSite = sites.find((s) => s.structureType === STRUCTURE_EXTENSION);
-            if (extSite) {
-              extSite.remove();
-              if (room.createConstructionSite(x, y, STRUCTURE_STORAGE) === OK) {
-                budget--;
-                evicted = true;
-              }
-            }
-          }
-        }
-      }
-
-      // FALLBACK: the checkerboard stamp is saturated with BUILT structures
-      // (no extension sites to evict).  Place storage on any walkable tile
-      // anywhere in the room.  Storage is the critical mid-game unlock for
-      // energy buffering and gated expansion — placing it off-stamp is
-      // infinitely better than never placing it at all.
-      if (!evicted) {
-        if (placeStorageAnywhere(room, data, terrain, anchor)) {
-          budget--;
-        }
-      }
     }
   }
 
@@ -292,6 +262,42 @@ function tooCloseToKeepClear(x: number, y: number, data: RoomData): boolean {
   }
   const ctrl = data.room.controller;
   if (ctrl && Math.max(Math.abs(x - ctrl.pos.x), Math.abs(y - ctrl.pos.y)) <= 1) return true;
+  return false;
+}
+
+/**
+ * Evict one extension construction site from a checkerboard stamp tile to make
+ * room for storage.  Returns true if an extension site was evicted and a storage
+ * site was successfully created in its place.
+ *
+ * Must scan the RAW checkerboard area, not the pre-filtered `tiles` list:
+ * `collectBuildTiles` filters out every tile that has any construction site,
+ * so it would contain zero extension sites to evict.
+ */
+function evictExtensionSiteForStorage(
+  room: Room,
+  anchor: RoomPosition,
+  terrain: RoomTerrain,
+): boolean {
+  const stampParity = (anchor.x + anchor.y) % 2;
+  for (let r = 1; r <= STAMP_RADIUS; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = anchor.x + dx;
+        const y = anchor.y + dy;
+        if (!inBounds(x, y)) continue;
+        if ((x + y) % 2 !== stampParity) continue;
+        if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
+        const sites = room.lookForAt(LOOK_CONSTRUCTION_SITES, x, y);
+        const extSite = sites.find((s) => s.structureType === STRUCTURE_EXTENSION);
+        if (extSite) {
+          extSite.remove();
+          if (room.createConstructionSite(x, y, STRUCTURE_STORAGE) === OK) return true;
+        }
+      }
+    }
+  }
   return false;
 }
 
