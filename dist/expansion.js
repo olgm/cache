@@ -230,39 +230,40 @@ function getExpansionSpawnRequest(room, data) {
         }
         return null;
     }
-    // All other expansion roles (claimer, pioneer) require the full expansion gate.
+    // Bootstrapping: a room we already OWN needs pioneers to build its first spawn.
+    // This MUST proceed regardless of expansion gates (room cap, storage, etc.) —
+    // the gate is for starting NEW expansions, not for completing one in progress.
+    // Without this, a claimed room sits at RCL 1 forever with zero upgrading.
+    if (mem.state === "bootstrapping") {
+        if (!mem.targetRoom)
+            return null;
+        if (pioneersFor(mem.targetRoom) < PIONEERS_PER_ROOM) {
+            return {
+                role: "pioneer",
+                body: (0, config_1.pioneerBody)(data.energyCapacity),
+                memory: { role: "pioneer", homeRoom: base.name, targetRoom: mem.targetRoom },
+            };
+        }
+        return null;
+    }
+    // Claiming requires the full expansion gate (room headroom + mature base).
     if (!expansionUnlocked(base))
         return null;
-    switch (mem.state) {
-        case "claiming": {
-            if (!mem.targetRoom)
-                return null;
-            const target = Game.rooms[mem.targetRoom];
-            if (target && target.controller && target.controller.my)
-                return null;
-            if (globalRoleCount("claimer") === 0) {
-                return {
-                    role: "claimer",
-                    body: (0, config_1.claimerBody)(data.energyCapacity),
-                    memory: { role: "claimer", homeRoom: base.name, targetRoom: mem.targetRoom },
-                };
-            }
+    if (mem.state === "claiming") {
+        if (!mem.targetRoom)
             return null;
+        const target = Game.rooms[mem.targetRoom];
+        if (target && target.controller && target.controller.my)
+            return null;
+        if (globalRoleCount("claimer") === 0) {
+            return {
+                role: "claimer",
+                body: (0, config_1.claimerBody)(data.energyCapacity),
+                memory: { role: "claimer", homeRoom: base.name, targetRoom: mem.targetRoom },
+            };
         }
-        case "bootstrapping": {
-            if (!mem.targetRoom)
-                return null;
-            if (pioneersFor(mem.targetRoom) < PIONEERS_PER_ROOM) {
-                return {
-                    role: "pioneer",
-                    body: (0, config_1.pioneerBody)(data.energyCapacity),
-                    memory: { role: "pioneer", homeRoom: base.name, targetRoom: mem.targetRoom },
-                };
-            }
-            return null;
-        }
-        default:
-            return null;
+        return null;
     }
+    return null;
 }
 //# sourceMappingURL=expansion.js.map

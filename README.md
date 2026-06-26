@@ -45,6 +45,20 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-26 09:35 UTC — Focus upgraders on underdeveloped W44N38 controller
+
+Redirect upgrading priority and creeps to room W44N38 to raise its lagging controller level and RCL sub-score.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 68/100
+
+**Why:** Room W44N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+
 ### 2026-06-26 06:05 UTC — Fix storage construction pipeline to build structures
 
 Repair the spawn/construction planner so storage structures actually get built instead of remaining as dead code, addressing the zero operational storage rooms in the live colony.
@@ -751,18 +765,4 @@ Introduce specialized harvester and hauler creep roles to increase energy collec
 **Issues addressed:**
 - eval: energy sub-score below healthy
 - heuristic: economy throughput
-
-### 2026-06-16 21:32 UTC — Focus upgraders on room W43N38
-
-Assign dedicated creep upgraders to the underdeveloped W43N38 controller to raise its RCL sub-score and close the upgrading gap.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 81/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
 <!-- SPARSE:CHANGELOG:END -->
