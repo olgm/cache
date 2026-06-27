@@ -230,6 +230,17 @@ function trySpawnRole(
     reservedSources.add(sid);
   }
 
+  if (role === "remoteHarvester") {
+    // Remote harvesters need sourceId and targetRoom so the role runner knows
+    // where to mine and where to deliver.  Without these the creep idles
+    // forever — the runtime symptom of the bug this block fixes.
+    const rmMem = ensureRemoteMiningMemory(room.name);
+    const source = pickRemoteSource(room.name, rmMem);
+    if (!source) return false;
+    memory.sourceId = source.id;
+    memory.targetRoom = source.room;
+  }
+
   return spawn.spawnCreep(body, name(role), { memory }) === OK;
 }
 

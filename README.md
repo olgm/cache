@@ -45,6 +45,21 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-27 21:31 UTC — Add remote harvesters and haulers to W44N38
+
+Deploy dedicated harvesters and haulers to remote sources in W44N38 to boost room energy throughput and raise the energy sub-score.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** remote-mining weakness (`remote-mining`)
+- **Eval score:** 68/100
+
+**Why:** Room W44N38 energy throughput is low; add harvesters/haulers or sources.
+
+**Issues addressed:**
+- eval: energy sub-score below healthy
+- cooldown: recently worked (−0.2)
+
 ### 2026-06-27 02:57 UTC — Dedicate more upgraders to W44N38 controller
 
 Increase the number and priority of upgrade creeps targeting room W44N38 to bring its under-leveled controller back to a healthy RCL pace.
@@ -741,20 +756,6 @@ Redirect upgraders to room W43N38 to close its RCL gap and raise the underdevelo
 ### 2026-06-17 02:35 UTC — Focus upgraders on underdeveloped room W43N38
 
 Shift upgrade energy and creep allocation to room W43N38 where the controller level lags behind other rooms.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-17 01:15 UTC — Focus upgraders on underdeveloped room W43N38
-
-Redirect upgrade creeps to W43N38 where the controller is behind, improving its RCL sub-score to match the rest of the colony.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early
