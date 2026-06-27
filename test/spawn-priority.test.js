@@ -38,6 +38,25 @@ test("energy pipeline still outranks builders (no economy regression)", () => {
   assert.ok(ROLE_PRIORITY.hauler < ROLE_PRIORITY.builder);
 });
 
+test("remote mining is built AFTER home construction but BEFORE discretionary upgraders", () => {
+  // Regression for the 2026-06-27 collapse: e548af4 placed remoteHarvester at
+  // priority 3 (above builders), so remote mining to a useless second room
+  // starved HOME construction — RCL5 storage sat unbuilt. remoteHarvester must
+  // sit below builder (construction wins) yet above upgrader (e548af4's intent:
+  // remote mining need not wait for a full upgrader fleet).
+  assert.ok(
+    ROLE_PRIORITY.builder < ROLE_PRIORITY.remoteHarvester,
+    "construction must outrank remote mining (don't starve storage/containers/towers)",
+  );
+  assert.ok(
+    ROLE_PRIORITY.remoteHarvester < ROLE_PRIORITY.upgrader,
+    "remote mining still outranks the discretionary upgrader fleet",
+  );
+  // The energy pipeline that feeds the whole colony still comes first.
+  assert.ok(ROLE_PRIORITY.miner < ROLE_PRIORITY.remoteHarvester);
+  assert.ok(ROLE_PRIORITY.hauler < ROLE_PRIORITY.remoteHarvester);
+});
+
 test("pickEconomyRole chooses builder over upgrader when both are under target", () => {
   // The exact live pathology: haulers satisfied, 0 upgraders, 0 builders, with
   // construction pending (builder target > 0). Must pick builder, not upgrader.

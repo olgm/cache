@@ -23,6 +23,18 @@ export interface SpawnRequest {
     body: BodyPartConstant[];
     memory: CreepMemory;
 }
+/**
+ * Storage energy a base must hold before it may CLAIM a new room. The expansion
+ * gate already requires a storage STRUCTURE, but an empty just-built storage
+ * passes that check — which is how the colony over-extended into W44N38 with no
+ * surplus to fund it (2026-06-27). Requiring a real reserve means a second room
+ * is only taken on when the home economy has proven surplus to spare for the
+ * claimer + pioneer upkeep. Tunable; the point is "expand only when genuinely
+ * rich", and not-expanding is the safe failure mode.
+ */
+export declare const EXPANSION_STORAGE_RESERVE = 30000;
+/** True when storage holds enough surplus energy to fund a new-room expansion. */
+export declare function hasExpansionSurplus(storageEnergy: number): boolean;
 /** Record intel about a visible room (called by scouts/claimers and the manager). */
 export declare function recordIntel(room: Room): void;
 export declare function runExpansionManager(): void;

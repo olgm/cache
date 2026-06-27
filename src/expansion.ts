@@ -37,6 +37,21 @@ export interface SpawnRequest {
 const INTEL_TTL = 5000;
 /** Pioneers to send to bootstrap a freshly-claimed room. */
 const PIONEERS_PER_ROOM = 3;
+/**
+ * Storage energy a base must hold before it may CLAIM a new room. The expansion
+ * gate already requires a storage STRUCTURE, but an empty just-built storage
+ * passes that check — which is how the colony over-extended into W44N38 with no
+ * surplus to fund it (2026-06-27). Requiring a real reserve means a second room
+ * is only taken on when the home economy has proven surplus to spare for the
+ * claimer + pioneer upkeep. Tunable; the point is "expand only when genuinely
+ * rich", and not-expanding is the safe failure mode.
+ */
+export const EXPANSION_STORAGE_RESERVE = 30000;
+
+/** True when storage holds enough surplus energy to fund a new-room expansion. */
+export function hasExpansionSurplus(storageEnergy: number): boolean {
+  return storageEnergy >= EXPANSION_STORAGE_RESERVE;
+}
 
 // ---------------------------------------------------------------------------
 // Memory
@@ -83,6 +98,9 @@ function expansionUnlocked(base: Room): boolean {
   if (ownedRoomCount() >= Game.gcl.level) return false; // claim limit = GCL
   if (!base.controller || base.controller.level < 4) return false;
   if (!base.storage) return false;
+  // Storage must hold a real surplus, not merely exist — an empty just-built
+  // storage is exactly the state in which the colony over-extended into W44N38.
+  if (!hasExpansionSurplus(base.storage.store[RESOURCE_ENERGY])) return false;
   return true;
 }
 

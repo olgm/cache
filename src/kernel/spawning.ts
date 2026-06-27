@@ -59,7 +59,7 @@ function runRoom(room: Room, census: Census): void {
   const targets = roleTargets(data, census.byRoom[room.name] || {});
 
   // Merge the remoteHarvester target into the economy role targets so it competes
-  // by priority (priority 3, between hauler and builder) instead of being gated
+  // by priority (priority 4.5, between builder and upgrader) instead of being gated
   // behind a fully-satisfied economy.  Without this, the spawn loop never reaches
   // step 3 (remote mining) when any economy role is under target — the common
   // case where upgraders are perpetually 1-2 below their desired count, blocking

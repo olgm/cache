@@ -30,6 +30,20 @@ const _reservedContainers = new Set<string>();
 /** Minimum energy a pile or container must have to be worth a trip. */
 const MIN_PICKUP = 25;
 
+/**
+ * During a source-pipeline outage (every source container dry — a miner gap or a
+ * full economy collapse) a hauler should ferry energy from STORAGE to the spawn
+ * so the colony keeps spawning. Without this, storage — the colony's largest
+ * buffer — cannot fuel recovery (`collect` otherwise only pulls from source
+ * containers / piles / tombstones), so a 0-miner collapse escaped only on luck:
+ * residual container energy (the 2026-06-27 near-death). True iff storage has
+ * energy AND a non-storage sink (spawn / extensions / towers) needs it. Pure +
+ * exported for unit testing.
+ */
+export function shouldRefillFromStorage(storageEnergy: number, spawnExtTowerFree: number): boolean {
+  return storageEnergy > 0 && spawnExtTowerFree > 0;
+}
+
 /** Build the set of container IDs that other haulers have already claimed. */
 function buildReservedSet(me: string): Set<string> {
   if (_reservedTick !== Game.time) {
@@ -134,6 +148,31 @@ function collect(creep: Creep, data: RoomData): void {
     if (creep.withdraw(tomb, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, tomb);
     return;
   }
+
+  // Source pipeline is dry — ferry from STORAGE to keep the spawn running so the
+  // colony can recover (a miner gap or a full collapse). Gated on NO source
+  // container holding ANY energy: reaching here does NOT by itself mean containers
+  // are empty — `bestContainer` is also null when every container is merely
+  // reserved by another hauler (at RCL5 there are more haulers than containers, so
+  // surplus collectors routinely find them all reserved). Draining storage in that
+  // normal case would needlessly empty the buffer, so require a true outage first.
+  // Delivery routes spawn/extensions/towers before storage, so this never loops
+  // energy back into storage.
+  const anySourceEnergy = data.sources.some(
+    (s) => s.container && s.container.store[RESOURCE_ENERGY] > 0,
+  );
+  if (!anySourceEnergy && data.storage) {
+    const spawnExtTowerFree = [...data.spawns, ...data.extensions, ...data.towers].reduce(
+      (sum, s) => sum + s.store.getFreeCapacity(RESOURCE_ENERGY),
+      0,
+    );
+    if (shouldRefillFromStorage(data.storage.store[RESOURCE_ENERGY], spawnExtTowerFree)) {
+      creep.memory.targetContainer = undefined;
+      if (creep.withdraw(data.storage, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, data.storage);
+      return;
+    }
+  }
+
   if (data.sources[0]) travel(creep, data.sources[0].source, 2);
 }
 

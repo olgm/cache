@@ -568,7 +568,6 @@ exports.ROLE_PRIORITY = {
     // expansion state goes idle and getExpansionSpawnRequest returns null —
     // the priority bump has no effect outside active bootstrapping.
     pioneer: 3,
-    remoteHarvester: 3,
     // Builders BEFORE upgraders. The builder target is construction-gated (0 when
     // nothing is queued — see roleTargets), so a single spawn must fund the colony's
     // PLANNED structures — towers (defense) and storage (logistics) — before the
@@ -581,6 +580,15 @@ exports.ROLE_PRIORITY = {
     // still progress while the base is being built; dedicated upgraders follow once
     // the construction backlog is funded.
     builder: 4,
+    // remoteHarvester AFTER builders (4 < 4.5 < upgrader 5). Remote mining must
+    // never starve HOME construction (storage / source+controller containers /
+    // towers) — that starvation is what kept RCL5 storage unbuilt through the
+    // 2026-06-27 collapse (e548af4 had placed it at priority 3, ABOVE builders).
+    // It still outranks the discretionary upgrader fleet, so e548af4's intent
+    // holds: remote mining need not wait for a fully-satisfied upgrader target —
+    // the builder target is construction-gated to 0 once the backlog is funded,
+    // after which remoteHarvester spawns freely.
+    remoteHarvester: 4.5,
     upgrader: 5,
     claimer: 7,
     scout: 8,
