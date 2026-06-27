@@ -261,8 +261,23 @@ function roleTargets(data, current) {
     //     exist. Capped by the open tiles around the uncovered sources. ---
     const uncovered = sourceCount - withContainer;
     if (withContainer === 0) {
-        // Pure bootstrap: 2-3 generalists per source, bounded by mining slots.
-        targets.harvester = Math.min(sourceCount * 3, totalOpenSlots, 6);
+        // Pure bootstrap: scale harvesters by RCL so the spawn reaches upgraders
+        // quickly.  At RCL 1 every control point gates container unlock (RCL 2);
+        // spawning 6 harvesters before the first upgrader starves the controller
+        // for hundreds of ticks — the exact pathology that keeps a freshly-claimed
+        // room at 0 control points forever.  A smaller harvester corps still feeds
+        // the spawn (each harvester mines 2 e/tick × 2 sources = 4 e/tick baseline)
+        // while freeing spawn cycles for the upgrader that converts energy into
+        // the RCL 2 unlock.
+        if (rcl <= 1) {
+            targets.harvester = Math.min(sourceCount + 1, totalOpenSlots, 3);
+        }
+        else if (rcl === 2) {
+            targets.harvester = Math.min(sourceCount * 2, totalOpenSlots, 4);
+        }
+        else {
+            targets.harvester = Math.min(sourceCount * 3, totalOpenSlots, 6);
+        }
     }
     else if (uncovered > 0) {
         targets.harvester = Math.min(uncovered * 2, totalOpenSlots);
@@ -545,6 +560,14 @@ exports.ROLE_PRIORITY = {
     miner: 1,
     hauler: 2,
     defender: 2, // urgent when present
+    // Pioneers at 3 (was 6) so they compete above builders/upgraders during
+    // bootstrapping.  A claimed room without a spawn generates ZERO control
+    // points and eventually downgrades; a pioneer that builds the spawn unlocks
+    // the new room's own spawning, which is a force-multiplier worth more than
+    // one extra upgrader cycle in the home room.  Once the spawn exists the
+    // expansion state goes idle and getExpansionSpawnRequest returns null —
+    // the priority bump has no effect outside active bootstrapping.
+    pioneer: 3,
     remoteHarvester: 3,
     // Builders BEFORE upgraders. The builder target is construction-gated (0 when
     // nothing is queued — see roleTargets), so a single spawn must fund the colony's
@@ -559,7 +582,6 @@ exports.ROLE_PRIORITY = {
     // the construction backlog is funded.
     builder: 4,
     upgrader: 5,
-    pioneer: 6,
     claimer: 7,
     scout: 8,
 };
