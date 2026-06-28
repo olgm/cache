@@ -136,10 +136,35 @@ function spawnEmergency(spawn, room, data) {
  * are satisfied). Exported for unit testing — it is the seam where the
  * ROLE_PRIORITY ordering decides whether builders ever get spawned ahead of the
  * upgrader fleet (see spawn-priority.test).
+ *
+ * Includes a builder-starvation guard: when construction sites exist and zero
+ * builders are alive or reserved, builder priority is temporarily elevated to
+ * 1.5 (above hauler at 2, below miner at 1) so at least one builder spawns.
+ * Without this, a hauler target that's perpetually 1 short of its floor (e.g.
+ * target 7, live 6) starves builders forever because hauler priority (2) always
+ * outranks builder priority (4). Once a single builder spawns the guard
+ * deactivates and normal ordering resumes.
  */
 function pickEconomyRole(targets, census, home, reserved) {
     const roles = Object.keys(targets).filter((r) => (targets[r] || 0) > 0);
-    roles.sort((a, b) => config_1.ROLE_PRIORITY[a] - config_1.ROLE_PRIORITY[b]);
+    // Builder-starvation guard: when construction sites exist and no builder is
+    // alive or reserved this tick, temporarily elevate builder priority so at
+    // least one builder gets spawned to work the sites.
+    const builderTarget = targets.builder || 0;
+    const builderCount = (0, census_1.roleCount)(census, home, "builder") + (reserved.builder || 0);
+    const builderStarved = builderTarget > 0 && builderCount === 0;
+    roles.sort((a, b) => {
+        let pa = config_1.ROLE_PRIORITY[a];
+        let pb = config_1.ROLE_PRIORITY[b];
+        if (builderStarved) {
+            // Elevate builder to 1.5: above hauler(2) + pioneer(3), below miner(1).
+            if (a === "builder")
+                pa = 1.5;
+            if (b === "builder")
+                pb = 1.5;
+        }
+        return pa - pb;
+    });
     for (const role of roles) {
         const want = targets[role] || 0;
         const have = (0, census_1.roleCount)(census, home, role) + (reserved[role] || 0);

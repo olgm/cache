@@ -19,6 +19,14 @@ export declare function runSpawnManager(): void;
  * are satisfied). Exported for unit testing — it is the seam where the
  * ROLE_PRIORITY ordering decides whether builders ever get spawned ahead of the
  * upgrader fleet (see spawn-priority.test).
+ *
+ * Includes a builder-starvation guard: when construction sites exist and zero
+ * builders are alive or reserved, builder priority is temporarily elevated to
+ * 1.5 (above hauler at 2, below miner at 1) so at least one builder spawns.
+ * Without this, a hauler target that's perpetually 1 short of its floor (e.g.
+ * target 7, live 6) starves builders forever because hauler priority (2) always
+ * outranks builder priority (4). Once a single builder spawns the guard
+ * deactivates and normal ordering resumes.
  */
 export declare function pickEconomyRole(targets: RoleTargets, census: Census, home: string, reserved: Record<string, number>): CreepRole | null;
 /**

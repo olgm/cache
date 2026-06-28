@@ -65,11 +65,32 @@ test("pickEconomyRole chooses builder over upgrader when both are under target",
   assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "builder");
 });
 
-test("pickEconomyRole fills the energy pipeline before builders", () => {
-  // Haulers under target → still spawn haulers first (don't starve the feeders).
+test("pickEconomyRole starvation-guard: builder beats hauler when zero builders alive and sites exist", () => {
+  // The exact live pathology: haulers 1 below target, builders at 0, construction
+  // sites exist (builder target > 0). The guard must elevate builder so it spawns
+  // ahead of the perpetually-under-target hauler fleet.
+  const targets = { harvester: 2, miner: 1, hauler: 7, upgrader: 6, builder: 3 };
+  const census = censusFor("W43N38", { harvester: 2, miner: 1, hauler: 6 });
+  assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "builder");
+});
+
+test("pickEconomyRole hauler fills before builder when builders already exist", () => {
+  // Guard deactivates once at least one builder is alive — hauler resumes its
+  // normal priority above builder.
   const targets = { harvester: 2, miner: 1, hauler: 6, upgrader: 6, builder: 3 };
-  const census = censusFor("W43N38", { harvester: 2, miner: 1, hauler: 4 });
+  const census = censusFor("W43N38", { harvester: 2, miner: 1, hauler: 4, builder: 1 });
   assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "hauler");
+});
+
+test("pickEconomyRole starvation-guard: miner and harvester still outrank a starved builder", () => {
+  // Even when builders are starved, the energy pipeline (harvester/miner) is more
+  // fundamental — they must spawn first or the room collapses entirely.
+  const targets = { harvester: 2, miner: 1, hauler: 7, builder: 3 };
+  const census = censusFor("W43N38", { harvester: 1, miner: 1, hauler: 6 });
+  assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "harvester");
+
+  const census2 = censusFor("W43N38", { harvester: 2, miner: 0, hauler: 6 });
+  assert.equal(pickEconomyRole(targets, census2, "W43N38", {}), "miner");
 });
 
 test("pickEconomyRole spawns upgraders once builders are satisfied", () => {

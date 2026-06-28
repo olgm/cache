@@ -45,6 +45,20 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-28 03:27 UTC — Elevate builder priority when builders starved
+
+Add a spawn-priority guard that temporarily ranks builders above haulers when critical construction sites exist and no builders are alive, breaking the hauler-dominance loop at RCL 5.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** spawning (`builder-starvation-guard`)
+- **Eval score:** 68/100
+
+**Why:** Storage is coded and construction sites are placed, but at RCL 5 the hauler target floor (7) outruns the live count (6) every tick, so the spawn loop always picks hauler (priority 2) over builder (priority 4) — zero builders ever spawn. A guard that temporarily elevates builder priority above hauler when critical construction sites exist and builder count is 0 unblocks the pipeline, getting storage built without adding new code for storage itself.
+
+**Issues addressed:**
+- feature-cadence: add (phase mid)
+
 ### 2026-06-27 21:31 UTC — Add remote harvesters and haulers to W44N38
 
 Deploy dedicated harvesters and haulers to remote sources in W44N38 to boost room energy throughput and raise the energy sub-score.
@@ -742,20 +756,6 @@ Reroute upgrade creeps to focus on room W43N38 where the RCL is lagging behind h
 ### 2026-06-17 03:26 UTC — Prioritize W43N38 controller upgrade throughput
 
 Redirect upgraders to room W43N38 to close its RCL gap and raise the underdeveloped controller's level.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-17 02:35 UTC — Focus upgraders on underdeveloped room W43N38
-
-Shift upgrade energy and creep allocation to room W43N38 where the controller level lags behind other rooms.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early
