@@ -26,7 +26,11 @@ const energy_1 = require("../utils/energy");
 const BUILD_PRIORITY = {
     [STRUCTURE_SPAWN]: 0,
     [STRUCTURE_TOWER]: 1, // defence comes first
-    [STRUCTURE_STORAGE]: 2, // energy buffer + expansion gate
+    [STRUCTURE_STORAGE]: 0.5, // energy buffer + expansion gate — MUST be built before
+    // controller container (0.75) and extensions (3),
+    // otherwise a controller-container site permanently
+    // starves storage (the 1 builder spends its life on the
+    // container while storage sits at 0 forever).
     [STRUCTURE_EXTENSION]: 3, // bigger creeps
     [STRUCTURE_CONTAINER]: 4, // static mining + upgrader supply
     [STRUCTURE_LINK]: 5,

@@ -45,6 +45,21 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-28 09:41 UTC — Fix storage construction pipeline to build missing storage
+
+Repair the construction and spawn pipeline so that storage structures are actually built and brought online, since the storage logic already exists but no rooms have operational storage.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** missing capability: storage / energy buffering (`storage`)
+- **Eval score:** 89/100
+
+**Why:** Cache has CODE for storage / energy buffering, but the live colony has none operational (rooms with storage: 0). The construction/spawn pipeline is not actually producing it — fix what prevents it from being built and used; do NOT re-add the code.
+
+**Issues addressed:**
+- roadmap: 'storage' expected since 'mid'
+- live: coded but not built — rooms with storage: 0
+
 ### 2026-06-28 03:27 UTC — Elevate builder priority when builders starved
 
 Add a spawn-priority guard that temporarily ranks builders above haulers when critical construction sites exist and no builders are alive, breaking the hauler-dominance loop at RCL 5.
@@ -742,20 +757,6 @@ Redirect upgrading effort toward room W43N38 to address its underdeveloped contr
 ### 2026-06-17 04:15 UTC — Direct more upgraders to W43N38 controller
 
 Reroute upgrade creeps to focus on room W43N38 where the RCL is lagging behind healthy thresholds.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-17 03:26 UTC — Prioritize W43N38 controller upgrade throughput
-
-Redirect upgraders to room W43N38 to close its RCL gap and raise the underdeveloped controller's level.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early
