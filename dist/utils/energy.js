@@ -14,6 +14,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.gatherEnergy = gatherEnergy;
 const movement_1 = require("./movement");
+const expansion_1 = require("../expansion");
 const MIN_PICKUP = 50;
 /** True if the creep issued a gather action (move/withdraw/pickup/harvest). */
 function gatherEnergy(creep, data) {
@@ -43,8 +44,15 @@ function gatherEnergy(creep, data) {
             (0, movement_1.travel)(creep, ruin);
         return true;
     }
-    // 3. Storage.
-    if (data.storage && data.storage.store[RESOURCE_ENERGY] > 0) {
+    // 3. Storage — but NOT while it is being accumulated as the expansion war
+    //    chest (buildingExpansionReserve): that energy is reserved capital until
+    //    the colony claims its next room, so draining it here would stop the
+    //    buffer ever reaching EXPANSION_STORAGE_RESERVE and re-open the low-GCL
+    //    deadlock. Collapse recovery has its own escape hatch in the hauler
+    //    (shouldRefillFromStorage), so survival is never blocked by this lock.
+    if (data.storage &&
+        data.storage.store[RESOURCE_ENERGY] > 0 &&
+        !(0, expansion_1.buildingExpansionReserve)(data.room)) {
         if (creep.withdraw(data.storage, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE)
             (0, movement_1.travel)(creep, data.storage);
         return true;

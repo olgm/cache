@@ -20,9 +20,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.shouldRefillFromStorage = shouldRefillFromStorage;
 exports.runHauler = runHauler;
+exports.chooseSink = chooseSink;
 const movement_1 = require("../utils/movement");
 const roomData_1 = require("../utils/roomData");
 const builder_1 = require("./builder");
+const expansion_1 = require("../expansion");
 // ---------------------------------------------------------------------------
 // Shared reservation state (per-tick, so haulers coordinate within this tick)
 // ---------------------------------------------------------------------------
@@ -188,6 +190,21 @@ function chooseSink(creep, data) {
         return creep.pos.findClosestByRange(towers);
     }
     const carriedEnergy = creep.store[RESOURCE_ENERGY];
+    // Expansion war chest: when the colony has GCL headroom and a mature base but
+    // an empty storage, the claim gate (storage >= EXPANSION_STORAGE_RESERVE) can
+    // never open — the GCL push below funnels every surplus into the controller
+    // container, so storage stays at 0 and the colony deadlocks at low GCL (the
+    // live "storage:0 forever, stuck at GCL 2" bug). Build the reserve FIRST: a
+    // second room raises GCL far faster than grinding a single controller. Keep
+    // only the spawn/extension heartbeat ahead of it so spawning never stalls.
+    if (data.storage &&
+        data.storage.store.getFreeCapacity(RESOURCE_ENERGY) > 0 &&
+        (0, expansion_1.buildingExpansionReserve)(data.room)) {
+        if (spawnExt.length > 0 && totalSpawnExtFree >= Math.min(carriedEnergy, 200)) {
+            return creep.pos.findClosestByRange(spawnExt);
+        }
+        return data.storage;
+    }
     // GCL push: at low GCL every control point gates multi-room expansion.
     // Route energy to the controller container aggressively, but keep
     // spawn AND extensions alive (they enable spawning bigger creeps).

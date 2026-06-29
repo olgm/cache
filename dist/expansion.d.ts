@@ -35,6 +35,24 @@ export interface SpawnRequest {
 export declare const EXPANSION_STORAGE_RESERVE = 30000;
 /** True when storage holds enough surplus energy to fund a new-room expansion. */
 export declare function hasExpansionSurplus(storageEnergy: number): boolean;
+/**
+ * True when this owned room is still ACCUMULATING the energy buffer the claim
+ * gate demands before it may expand. While this holds, storage energy is
+ * reserved capital: haulers fill storage instead of over-feeding the GCL push,
+ * and consumers (upgraders/builders via gatherEnergy) leave it alone — so the
+ * buffer can actually reach EXPANSION_STORAGE_RESERVE.
+ *
+ * Without this the colony DEADLOCKS at low GCL: the claim gate needs a storage
+ * surplus, but the hauler's GCL-push funnels every surplus into the controller
+ * container, so storage sits at 0 forever — never expanding, so GCL never rises,
+ * so the GCL push never relents. (This is the live "W43N38 storage:0, stuck at
+ * GCL 2" bug; SPARSE reads the empty storage as "storage capability missing".)
+ *
+ * Headroom (`ownedRooms < GCL`) is required so a colony that cannot legally
+ * claim another room yet does not needlessly hoard energy away from upgrading;
+ * once it claims the room, ownedRooms catches up to GCL and the reserve unlocks.
+ */
+export declare function buildingExpansionReserve(room: Room): boolean;
 /** Record intel about a visible room (called by scouts/claimers and the manager). */
 export declare function recordIntel(room: Room): void;
 export declare function runExpansionManager(): void;

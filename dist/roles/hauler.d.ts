@@ -16,6 +16,7 @@
  * hauler picks the CLOSEST one with enough energy, not just the fullest — this
  * cuts travel time and raises throughput.
  */
+import { RoomData } from "../utils/roomData";
 /**
  * During a source-pipeline outage (every source container dry — a miner gap or a
  * full economy collapse) a hauler should ferry energy from STORAGE to the spawn
@@ -28,3 +29,4 @@
  */
 export declare function shouldRefillFromStorage(storageEnergy: number, spawnExtTowerFree: number): boolean;
 export declare function runHauler(creep: Creep): void;
+export declare function chooseSink(creep: Creep, data: RoomData): Structure | null;

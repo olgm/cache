@@ -26,11 +26,12 @@ const energy_1 = require("../utils/energy");
 const BUILD_PRIORITY = {
     [STRUCTURE_SPAWN]: 0,
     [STRUCTURE_TOWER]: 1, // defence comes first
-    [STRUCTURE_STORAGE]: 0.5, // energy buffer + expansion gate — MUST be built before
-    // controller container (0.75) and extensions (3),
-    // otherwise a controller-container site permanently
-    // starves storage (the 1 builder spends its life on the
-    // container while storage sits at 0 forever).
+    [STRUCTURE_STORAGE]: 1.5, // energy buffer + expansion gate — between tower (1)
+    // and extensions (3) for the shared pickSiteByPriority
+    // (hauler surplus-dump). The builder's own pickSite()
+    // elevates storage above the controller container (0.75)
+    // so a controller-container site doesn't permanently
+    // starve storage — see the special-case in pickSite().
     [STRUCTURE_EXTENSION]: 3, // bigger creeps
     [STRUCTURE_CONTAINER]: 4, // static mining + upgrader supply
     [STRUCTURE_LINK]: 5,
@@ -125,8 +126,11 @@ function pickSite(creep) {
         if (bootstrapping && s.structureType === STRUCTURE_CONTAINER) {
             prio = 0.5; // before extensions
         }
+        else if (s.structureType === STRUCTURE_STORAGE) {
+            prio = 0.6; // after source containers, before controller container
+        }
         else if (s === controllerContainerSite) {
-            prio = 0.75; // after source containers, before extensions
+            prio = 0.75; // after storage, before extensions
         }
         // Tie-break by remaining work then range, folded into one comparable key.
         const key = prio * 1e6 + (s.progressTotal - s.progress);
