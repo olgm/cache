@@ -146,13 +146,22 @@ function spawnEmergency(spawn: StructureSpawn, room: Room, data: RoomData): bool
  * ROLE_PRIORITY ordering decides whether builders ever get spawned ahead of the
  * upgrader fleet (see spawn-priority.test).
  *
- * Includes a builder-starvation guard: when construction sites exist and zero
- * builders are alive or reserved, builder priority is temporarily elevated to
- * 1.5 (above hauler at 2, below miner at 1) so at least one builder spawns.
- * Without this, a hauler target that's perpetually 1 short of its floor (e.g.
- * target 7, live 6) starves builders forever because hauler priority (2) always
- * outranks builder priority (4). Once a single builder spawns the guard
- * deactivates and normal ordering resumes.
+ * Includes two starvation guards that prevent higher-priority roles from
+ * consuming every spawn cycle forever:
+ *
+ * 1. Builder-starvation guard: when construction sites exist and zero builders
+ *    are alive or reserved, builder priority is temporarily elevated to 1.5
+ *    (above hauler at 2, below miner at 1) so at least one builder spawns.
+ *
+ * 2. Upgrader-starvation guard: when GCL ≤ 2 (every control point gates
+ *    multi-room expansion) and the upgrader corps is below a minimum floor
+ *    (scaled by RCL), upgrader priority is temporarily elevated to 2.5 (above
+ *    hauler at 2, below miner at 1) so at least the floor count of upgraders
+ *    is maintained.  Without this, a hauler target that is perpetually 2-3
+ *    short of its ceiling (the common RCL 5 state) consumes every spawn cycle
+ *    and the upgrader count never reaches even its modest floor — control
+ *    points flatline, GCL stalls, and the colony deadlocks.  Once the floor is
+ *    reached the guard deactivates and normal ordering resumes.
  */
 export function pickEconomyRole(
   targets: RoleTargets,
@@ -169,6 +178,20 @@ export function pickEconomyRole(
   const builderCount = roleCount(census, home, "builder") + (reserved.builder || 0);
   const builderStarved = builderTarget > 0 && builderCount === 0;
 
+  // Upgrader-starvation guard: when GCL is low (≤ 2) every control point
+  // gates expansion — maintain a minimum upgrader corps so control points
+  // keep flowing even while higher-priority roles (haulers) are under target.
+  const upgraderTarget = targets.upgrader || 0;
+  const upgraderCount = roleCount(census, home, "upgrader") + (reserved.upgrader || 0);
+  // Minimum floor: at RCL ≥ 5 the economy is mature enough to feed 3 upgraders
+  // without strain; at RCL 3-4, 2; at RCL 1-2 the GCL push already elevates
+  // the target through config.ts, so we use a lower floor.
+  const room = Game.rooms[home];
+  const rcl = room?.controller?.level ?? 0;
+  const upgraderFloor = rcl >= 5 ? 3 : rcl >= 3 ? 2 : 1;
+  const upgraderStarved =
+    Game.gcl.level <= 2 && upgraderTarget > 0 && upgraderCount < upgraderFloor;
+
   roles.sort((a, b) => {
     let pa = ROLE_PRIORITY[a];
     let pb = ROLE_PRIORITY[b];
@@ -176,6 +199,13 @@ export function pickEconomyRole(
       // Elevate builder to 1.5: above hauler(2) + pioneer(3), below miner(1).
       if (a === "builder") pa = 1.5;
       if (b === "builder") pb = 1.5;
+    }
+    if (upgraderStarved) {
+      // Elevate upgrader to 2.5: above hauler(2), below miner(1).
+      // Builder at 1.5 (when starved) still outranks upgrader at 2.5,
+      // so construction-critical builders always come first.
+      if (a === "upgrader") pa = 2.5;
+      if (b === "upgrader") pb = 2.5;
     }
     return pa - pb;
   });

@@ -20,7 +20,7 @@
 import { travel } from "../utils/movement";
 import { getRoomData, RoomData } from "../utils/roomData";
 import { pickSiteByPriority } from "./builder";
-import { buildingExpansionReserve } from "../expansion";
+import { buildingExpansionReserve, EXPANSION_STORAGE_RESERVE } from "../expansion";
 
 // ---------------------------------------------------------------------------
 // Shared reservation state (per-tick, so haulers coordinate within this tick)
@@ -219,11 +219,41 @@ export function chooseSink(creep: Creep, data: RoomData): Structure | null {
   // live "storage:0 forever, stuck at GCL 2" bug). Build the reserve FIRST: a
   // second room raises GCL far faster than grinding a single controller. Keep
   // only the spawn/extension heartbeat ahead of it so spawning never stalls.
+  //
+  // CRITICAL: building the reserve must NOT starve the controller container.
+  // Upgraders depend on it for efficient uptime; when it sits empty they burn
+  // most ticks walking to distant sources, and control-point output — the very
+  // thing that raises GCL — collapses.  GCL is the hard gate on expansion, so
+  // a reserve built without control-point progress is a dead end.  Split the
+  // hauler fleet: fill storage, but route to the controller container when it
+  // is less than half full AND storage has already accumulated meaningful
+  // progress (≥ 50 % of the reserve).  Once the controller container is topped
+  // up (≥ 80 %), haulers resume filling storage exclusively.
   if (
     data.storage &&
     data.storage.store.getFreeCapacity(RESOURCE_ENERGY) > 0 &&
     buildingExpansionReserve(data.room)
   ) {
+    // Allow controller-container fills when it is running dry, provided storage
+    // is making progress (≥ 50 % of EXPANSION_STORAGE_RESERVE).  Below that
+    // threshold the reserve itself is too fragile to divert from.
+    const cc = data.controllerContainer;
+    if (cc) {
+      const ccFill = cc.store[RESOURCE_ENERGY] / cc.store.getCapacity(RESOURCE_ENERGY);
+      const storageProgress = data.storage.store[RESOURCE_ENERGY] >= EXPANSION_STORAGE_RESERVE * 0.5;
+      if (ccFill < 0.5 && storageProgress) {
+        return cc;
+      }
+      if (ccFill >= 0.8) {
+        // Controller container is full — fill storage exclusively.
+        if (spawnExt.length > 0 && totalSpawnExtFree >= Math.min(carriedEnergy, 200)) {
+          return creep.pos.findClosestByRange(spawnExt);
+        }
+        return data.storage;
+      }
+    }
+    // Controller container doesn't exist or is in the 50-80 % band: fill
+    // storage but keep spawn/extensions alive.
     if (spawnExt.length > 0 && totalSpawnExtFree >= Math.min(carriedEnergy, 200)) {
       return creep.pos.findClosestByRange(spawnExt);
     }

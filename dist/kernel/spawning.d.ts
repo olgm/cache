@@ -20,13 +20,22 @@ export declare function runSpawnManager(): void;
  * ROLE_PRIORITY ordering decides whether builders ever get spawned ahead of the
  * upgrader fleet (see spawn-priority.test).
  *
- * Includes a builder-starvation guard: when construction sites exist and zero
- * builders are alive or reserved, builder priority is temporarily elevated to
- * 1.5 (above hauler at 2, below miner at 1) so at least one builder spawns.
- * Without this, a hauler target that's perpetually 1 short of its floor (e.g.
- * target 7, live 6) starves builders forever because hauler priority (2) always
- * outranks builder priority (4). Once a single builder spawns the guard
- * deactivates and normal ordering resumes.
+ * Includes two starvation guards that prevent higher-priority roles from
+ * consuming every spawn cycle forever:
+ *
+ * 1. Builder-starvation guard: when construction sites exist and zero builders
+ *    are alive or reserved, builder priority is temporarily elevated to 1.5
+ *    (above hauler at 2, below miner at 1) so at least one builder spawns.
+ *
+ * 2. Upgrader-starvation guard: when GCL ≤ 2 (every control point gates
+ *    multi-room expansion) and the upgrader corps is below a minimum floor
+ *    (scaled by RCL), upgrader priority is temporarily elevated to 2.5 (above
+ *    hauler at 2, below miner at 1) so at least the floor count of upgraders
+ *    is maintained.  Without this, a hauler target that is perpetually 2-3
+ *    short of its ceiling (the common RCL 5 state) consumes every spawn cycle
+ *    and the upgrader count never reaches even its modest floor — control
+ *    points flatline, GCL stalls, and the colony deadlocks.  Once the floor is
+ *    reached the guard deactivates and normal ordering resumes.
  */
 export declare function pickEconomyRole(targets: RoleTargets, census: Census, home: string, reserved: Record<string, number>): CreepRole | null;
 /**

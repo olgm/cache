@@ -45,6 +45,21 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-29 15:38 UTC — Prioritize upgraders for W43N38 controller
+
+Shift upgrade creep allocation to focus on room W43N38 where the controller RCL is lagging behind healthy levels.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 89/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+- cooldown: recently worked (−0.4)
+
 ### 2026-06-28 09:41 UTC — Fix storage construction pipeline to build missing storage
 
 Repair the construction and spawn pipeline so that storage structures are actually built and brought online, since the storage logic already exists but no rooms have operational storage.
@@ -743,20 +758,6 @@ Increase the number of creeps dedicated to upgrading room W43N38's controller to
 ### 2026-06-17 05:18 UTC — Prioritize W43N38 controller upgrading
 
 Redirect upgrading effort toward room W43N38 to address its underdeveloped controller and improve the RCL sub-score.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-17 04:15 UTC — Direct more upgraders to W43N38 controller
-
-Reroute upgrade creeps to focus on room W43N38 where the RCL is lagging behind healthy thresholds.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early
