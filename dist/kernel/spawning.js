@@ -171,10 +171,16 @@ function pickEconomyRole(targets, census, home, reserved) {
     // Minimum floor: at RCL ≥ 5 the economy is mature enough to feed 3 upgraders
     // without strain; at RCL 3-4, 2; at RCL 1-2 the GCL push already elevates
     // the target through config.ts, so we use a lower floor.
-    const room = Game.rooms[home];
-    const rcl = (_b = (_a = room === null || room === void 0 ? void 0 : room.controller) === null || _a === void 0 ? void 0 : _a.level) !== null && _b !== void 0 ? _b : 0;
-    const upgraderFloor = rcl >= 5 ? 3 : rcl >= 3 ? 2 : 1;
-    const upgraderStarved = Game.gcl.level <= 2 && upgraderTarget > 0 && upgraderCount < upgraderFloor;
+    // Guarded behind a typeof check so the function remains callable in Node.js
+    // test environments where the Screeps `Game` global does not exist.
+    let upgraderStarved = false;
+    if (typeof Game !== "undefined") {
+        const room = Game.rooms[home];
+        const rcl = (_b = (_a = room === null || room === void 0 ? void 0 : room.controller) === null || _a === void 0 ? void 0 : _a.level) !== null && _b !== void 0 ? _b : 0;
+        const upgraderFloor = rcl >= 5 ? 3 : rcl >= 3 ? 2 : 1;
+        upgraderStarved =
+            Game.gcl.level <= 2 && upgraderTarget > 0 && upgraderCount < upgraderFloor;
+    }
     roles.sort((a, b) => {
         let pa = config_1.ROLE_PRIORITY[a];
         let pb = config_1.ROLE_PRIORITY[b];

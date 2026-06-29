@@ -45,6 +45,21 @@ _Auto-generated from the Cache source tree (25 modules)._
 <!-- SPARSE:CHANGELOG:START -->
 ## Changelog
 
+### 2026-06-29 21:39 UTC — Boost W43N38 upgrader count and energy delivery
+
+Increase the number of dedicated upgraders and improve energy hauling to W43N38's under-leveled controller to accelerate RCL progression.
+
+- **Model:** deepseek:v4-pro
+- **Phase:** mid
+- **Focus:** upgrading weakness (`upgrading`)
+- **Eval score:** 89/100
+
+**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
+
+**Issues addressed:**
+- eval: rcl sub-score below healthy
+- cooldown: recently worked (−0.4)
+
 ### 2026-06-29 15:38 UTC — Prioritize upgraders for W43N38 controller
 
 Shift upgrade creep allocation to focus on room W43N38 where the controller RCL is lagging behind healthy levels.
@@ -744,20 +759,6 @@ Redirect upgrade creeps to prioritize room W43N38 whose controller level lags, b
 ### 2026-06-17 06:38 UTC — Assign dedicated upgraders to room W43N38
 
 Increase the number of creeps dedicated to upgrading room W43N38's controller to bring its RCL sub-score back to healthy levels.
-
-- **Model:** deepseek:v4-pro
-- **Phase:** early
-- **Focus:** upgrading weakness (`upgrading`)
-- **Eval score:** 86/100
-
-**Why:** Room W43N38 controller is underdeveloped; focus upgraders there.
-
-**Issues addressed:**
-- eval: rcl sub-score below healthy
-
-### 2026-06-17 05:18 UTC — Prioritize W43N38 controller upgrading
-
-Redirect upgrading effort toward room W43N38 to address its underdeveloped controller and improve the RCL sub-score.
 
 - **Model:** deepseek:v4-pro
 - **Phase:** early
