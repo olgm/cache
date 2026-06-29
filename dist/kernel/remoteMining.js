@@ -27,9 +27,18 @@ const remoteMiningMemory_1 = require("./remoteMiningMemory");
 Object.defineProperty(exports, "ensureRemoteMiningMemory", { enumerable: true, get: function () { return remoteMiningMemory_1.ensureRemoteMiningMemory; } });
 const roomData_1 = require("../utils/roomData");
 const config_1 = require("../config");
-const REMOTE_SCAN_INTERVAL = 100;
+const REMOTE_SCAN_INTERVAL = 50;
 const INTEL_TTL = 3000;
-const MAX_REMOTE_HARVESTERS_PER_ROOM = 2;
+/**
+ * Maximum remoteHarvesters per home room, scaled by the number of viable
+ * sources found in adjacent rooms.  A 2-source room can feed 4 remoteHarvesters
+ * (2 per source), which the old flat cap of 2 left on the table — halving the
+ * energy throughput from remote mining.  The ceiling of 4 per home room keeps
+ * the spawn budget manageable.
+ */
+function maxRemoteHarvesters(sourceCount) {
+    return Math.min(sourceCount * 2, 4);
+}
 /** Gate: home room must have static mining running and no active spawn-stall. */
 function remoteMiningUnlocked(room) {
     if (!room.controller || room.controller.level < 4)
@@ -157,9 +166,10 @@ function remoteHarvesterTarget(room, mem) {
     }
     if (total === 0)
         return 0;
-    // Scale: one remote harvester per viable source, capped at 2.
-    // Remote harvesters are expensive; don't over-invest.
-    return Math.min(total, MAX_REMOTE_HARVESTERS_PER_ROOM);
+    // Scale: up to 2 remoteHarvesters per viable source, capped at 4 per home
+    // room.  The old flat cap of 2 starved remote mining at exactly half its
+    // throughput potential when two viable sources exist.
+    return maxRemoteHarvesters(total);
 }
 /**
  * Run the remote mining manager for all owned rooms.
