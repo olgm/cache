@@ -20,6 +20,7 @@
 import { travel } from "../utils/movement";
 import { getRoomData, RoomData } from "../utils/roomData";
 import { pickSiteByPriority } from "./builder";
+import { buildingExpansionReserve } from "../expansion";
 
 // ---------------------------------------------------------------------------
 // Shared reservation state (per-tick, so haulers coordinate within this tick)
@@ -193,7 +194,7 @@ function deliver(creep: Creep, data: RoomData): void {
   if (creep.transfer(target, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, target);
 }
 
-function chooseSink(creep: Creep, data: RoomData): Structure | null {
+export function chooseSink(creep: Creep, data: RoomData): Structure | null {
   const spawnExtAll = [...data.spawns, ...data.extensions];
   const spawnExt = spawnExtAll.filter(
     (s) => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0,
@@ -210,6 +211,24 @@ function chooseSink(creep: Creep, data: RoomData): Structure | null {
   }
 
   const carriedEnergy = creep.store[RESOURCE_ENERGY];
+
+  // Expansion war chest: when the colony has GCL headroom and a mature base but
+  // an empty storage, the claim gate (storage >= EXPANSION_STORAGE_RESERVE) can
+  // never open — the GCL push below funnels every surplus into the controller
+  // container, so storage stays at 0 and the colony deadlocks at low GCL (the
+  // live "storage:0 forever, stuck at GCL 2" bug). Build the reserve FIRST: a
+  // second room raises GCL far faster than grinding a single controller. Keep
+  // only the spawn/extension heartbeat ahead of it so spawning never stalls.
+  if (
+    data.storage &&
+    data.storage.store.getFreeCapacity(RESOURCE_ENERGY) > 0 &&
+    buildingExpansionReserve(data.room)
+  ) {
+    if (spawnExt.length > 0 && totalSpawnExtFree >= Math.min(carriedEnergy, 200)) {
+      return creep.pos.findClosestByRange(spawnExt);
+    }
+    return data.storage;
+  }
 
   // GCL push: at low GCL every control point gates multi-room expansion.
   // Route energy to the controller container aggressively, but keep

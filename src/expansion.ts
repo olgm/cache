@@ -53,6 +53,32 @@ export function hasExpansionSurplus(storageEnergy: number): boolean {
   return storageEnergy >= EXPANSION_STORAGE_RESERVE;
 }
 
+/**
+ * True when this owned room is still ACCUMULATING the energy buffer the claim
+ * gate demands before it may expand. While this holds, storage energy is
+ * reserved capital: haulers fill storage instead of over-feeding the GCL push,
+ * and consumers (upgraders/builders via gatherEnergy) leave it alone — so the
+ * buffer can actually reach EXPANSION_STORAGE_RESERVE.
+ *
+ * Without this the colony DEADLOCKS at low GCL: the claim gate needs a storage
+ * surplus, but the hauler's GCL-push funnels every surplus into the controller
+ * container, so storage sits at 0 forever — never expanding, so GCL never rises,
+ * so the GCL push never relents. (This is the live "W43N38 storage:0, stuck at
+ * GCL 2" bug; SPARSE reads the empty storage as "storage capability missing".)
+ *
+ * Headroom (`ownedRooms < GCL`) is required so a colony that cannot legally
+ * claim another room yet does not needlessly hoard energy away from upgrading;
+ * once it claims the room, ownedRooms catches up to GCL and the reserve unlocks.
+ */
+export function buildingExpansionReserve(room: Room): boolean {
+  if (ownedRoomCount() >= Game.gcl.level) return false;
+  const ctrl = room.controller;
+  if (!ctrl || !ctrl.my || ctrl.level < 4) return false;
+  const storage = room.storage;
+  if (!storage) return false;
+  return storage.store[RESOURCE_ENERGY] < EXPANSION_STORAGE_RESERVE;
+}
+
 // ---------------------------------------------------------------------------
 // Memory
 // ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@
 
 import { RoomData } from "./roomData";
 import { travel } from "./movement";
+import { buildingExpansionReserve } from "../expansion";
 
 const MIN_PICKUP = 50;
 
@@ -43,8 +44,17 @@ export function gatherEnergy(creep: Creep, data: RoomData): boolean {
     return true;
   }
 
-  // 3. Storage.
-  if (data.storage && data.storage.store[RESOURCE_ENERGY] > 0) {
+  // 3. Storage — but NOT while it is being accumulated as the expansion war
+  //    chest (buildingExpansionReserve): that energy is reserved capital until
+  //    the colony claims its next room, so draining it here would stop the
+  //    buffer ever reaching EXPANSION_STORAGE_RESERVE and re-open the low-GCL
+  //    deadlock. Collapse recovery has its own escape hatch in the hauler
+  //    (shouldRefillFromStorage), so survival is never blocked by this lock.
+  if (
+    data.storage &&
+    data.storage.store[RESOURCE_ENERGY] > 0 &&
+    !buildingExpansionReserve(data.room)
+  ) {
     if (creep.withdraw(data.storage, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, data.storage);
     return true;
   }
