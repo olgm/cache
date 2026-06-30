@@ -160,26 +160,44 @@ function planContainers(room, data, budget) {
         }
     }
     // One container near the controller (upgrader supply).
-    if (placed < budget && containerCount < maxContainers && room.controller && !data.controllerContainer) {
+    // The `!data.controllerContainer` check only catches BUILT containers; a
+    // construction site for the controller container can exist for many cycles
+    // (builders prioritise storage/towers first).  Without checking for an
+    // existing SITE, each planning pass would place a NEW controller container
+    // site at a different tile, accumulating duplicate sites that waste the
+    // construction-site budget and crowd out storage.  Fixed by testing for
+    // a controller-container site before placing another.
+    const controllerContainerSiteExists = room
+        .find(FIND_MY_CONSTRUCTION_SITES)
+        .some((s) => {
+        if (s.structureType !== STRUCTURE_CONTAINER)
+            return false;
+        if (!room.controller)
+            return false;
+        if (!s.pos.inRangeTo(room.controller.pos, 3))
+            return false;
+        // Exclude source-container sites (within range 1 of any source).
+        return !data.sources.some((sd) => s.pos.inRangeTo(sd.source.pos, 1));
+    });
+    if (placed < budget &&
+        containerCount < maxContainers &&
+        room.controller &&
+        !data.controllerContainer &&
+        !controllerContainerSiteExists) {
         const ctrl = room.controller.pos;
-        const nearbyContainerSite = room
-            .lookForAtArea(LOOK_CONSTRUCTION_SITES, Math.max(0, ctrl.y - 3), Math.max(0, ctrl.x - 3), Math.min(49, ctrl.y + 3), Math.min(49, ctrl.x + 3), true)
-            .some((r) => r.constructionSite.structureType === STRUCTURE_CONTAINER);
-        if (!nearbyContainerSite) {
-            // Prefer distance 2 (leaves the immediate ring as upgrader standing room),
-            // then fall back to 3 and 1 so a tightly-built or edge-hugging controller
-            // still gets a container — all are inside the range-3 supply radius that
-            // roomData uses to recognise a controller container.
-            let tile = null;
-            for (const d of [2, 3, 1]) {
-                tile = ringTileNear(ctrl, d, room, anchorPos, inRoom);
-                if (tile)
-                    break;
-            }
-            if (tile && room.createConstructionSite(tile.x, tile.y, STRUCTURE_CONTAINER) === OK) {
-                placed++;
-                containerCount++;
-            }
+        // Prefer distance 2 (leaves the immediate ring as upgrader standing room),
+        // then fall back to 3 and 1 so a tightly-built or edge-hugging controller
+        // still gets a container — all are inside the range-3 supply radius that
+        // roomData uses to recognise a controller container.
+        let tile = null;
+        for (const d of [2, 3, 1]) {
+            tile = ringTileNear(ctrl, d, room, anchorPos, inRoom);
+            if (tile)
+                break;
+        }
+        if (tile && room.createConstructionSite(tile.x, tile.y, STRUCTURE_CONTAINER) === OK) {
+            placed++;
+            containerCount++;
         }
     }
     return placed;
@@ -315,8 +333,12 @@ function placeStorageAnywhere(room, data, terrain, anchor) {
             }
         }
     }
-    // Second pass: relax the keep-clear constraint — storage is too critical to
-    // go without just because the room is tight.
+    // Second pass: relax BOTH the keep-clear constraint and the edge margin.
+    // Storage is the single most important mid-game structure — it unlocks the
+    // expansion gate and energy buffering.  Using inRoom (1-tile margin) instead
+    // of inBounds (3-tile margin) means storage can be placed as close to the
+    // room edge as the server permits, which matters when the anchor is near a
+    // corner or the room is tightly packed.
     for (let r = 0; r <= 23; r++) {
         for (let dx = -r; dx <= r; dx++) {
             for (let dy = -r; dy <= r; dy++) {
@@ -324,7 +346,7 @@ function placeStorageAnywhere(room, data, terrain, anchor) {
                     continue;
                 const x = anchor.x + dx;
                 const y = anchor.y + dy;
-                if (!inBounds(x, y))
+                if (!inRoom(x, y))
                     continue;
                 if (terrain.get(x, y) === TERRAIN_MASK_WALL)
                     continue;
