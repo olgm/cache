@@ -19,6 +19,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ensureRemoteMiningMemory = void 0;
+exports.scanRemoteRoom = scanRemoteRoom;
 exports.pickRemoteSource = pickRemoteSource;
 exports.runRemoteMiningManager = runRemoteMiningManager;
 exports.remoteHarvesterTargetForRoom = remoteHarvesterTargetForRoom;
@@ -52,69 +53,72 @@ function remoteMiningUnlocked(room) {
         return false;
     return true;
 }
+/**
+ * Classify a single VISIBLE adjacent room for remote mining: returns its sources
+ * that have at least one open adjacent tile, or `[]` if the room is off-limits.
+ *
+ * Off-limits = any owned controller (ours OR another player's), a room reserved
+ * by another player, or a room holding hostiles / source-keeper lairs.
+ *
+ * Excluding rooms WE own is the fix for the W44N38 bootstrap starvation. A room
+ * we own but have not yet given a spawn is a colony we are actively bootstrapping
+ * with pioneers. Remote-mining it is counter-productive: (a) remoteHarvesters are
+ * spawned from the home room AHEAD of pioneers (pioneers are only requested once
+ * the economy + remoteHarvester targets are met), so an unmet remote target keeps
+ * pioneers from ever spawning; and (b) the remoteHarvesters would contend with
+ * those pioneers for the new room's own source energy. Once the room has a spawn
+ * it runs its own static miners — it is never a remote-mining target either way.
+ *
+ * Pure given a visible room, so it is unit-tested directly (no getRoomData).
+ */
+function scanRemoteRoom(targetRoom) {
+    const ctrl = targetRoom.controller;
+    if (ctrl && ctrl.owner)
+        return []; // owned by anyone — see note above
+    if (ctrl && ctrl.reservation)
+        return []; // reserved by another player
+    const hostiles = targetRoom.find(FIND_HOSTILE_CREEPS).length > 0;
+    const keeperLairs = targetRoom.find(FIND_HOSTILE_STRUCTURES, {
+        filter: (s) => s.structureType === STRUCTURE_KEEPER_LAIR,
+    }).length > 0;
+    if (hostiles || keeperLairs)
+        return [];
+    // Gather all sources with at least one open adjacent tile.
+    const terrain = targetRoom.getTerrain();
+    const viableSources = [];
+    for (const source of targetRoom.find(FIND_SOURCES)) {
+        let openSlots = 0;
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0)
+                    continue;
+                const x = source.pos.x + dx;
+                const y = source.pos.y + dy;
+                if (x < 0 || x > 49 || y < 0 || y > 49)
+                    continue;
+                if (terrain.get(x, y) !== TERRAIN_MASK_WALL)
+                    openSlots++;
+            }
+        }
+        if (openSlots > 0) {
+            viableSources.push({ id: source.id, room: targetRoom.name, openSlots });
+        }
+    }
+    return viableSources;
+}
 /** Scan adjacent rooms and cache viable sources. */
 function scanAdjacent(room, mem) {
     const exits = Game.map.describeExits(room.name);
     if (!exits)
         return;
-    const adj = Object.values(exits);
-    for (const roomName of adj) {
+    for (const roomName of Object.values(exits)) {
         // Already have fresh intel.
         if (mem.intel[roomName] && Game.time - mem.intel[roomName].lastScan < INTEL_TTL)
             continue;
         const targetRoom = Game.rooms[roomName];
         if (!targetRoom)
             continue; // no visibility
-        const ctrl = targetRoom.controller;
-        const owner = ctrl ? ctrl.owner : undefined;
-        const reserved = ctrl ? !!ctrl.reservation : false;
-        // Skip reserved or hostile rooms.
-        // OWNED rooms: skip if they belong to another player, but ALLOW
-        // rooms we own that have no spawn yet (bootstrapping) — their
-        // sources would otherwise sit idle while pioneers slowly build
-        // the first spawn.  Remote harvesters from the home room can
-        // mine those sources and deliver energy home right now.
-        const mySpawns = targetRoom.find(FIND_MY_SPAWNS);
-        if (owner && (!ctrl.my || mySpawns.length > 0)) {
-            mem.intel[roomName] = { lastScan: Game.time, viableSources: [] };
-            continue;
-        }
-        if (reserved) {
-            mem.intel[roomName] = { lastScan: Game.time, viableSources: [] };
-            continue;
-        }
-        const hostiles = targetRoom.find(FIND_HOSTILE_CREEPS).length > 0;
-        const keeperLairs = targetRoom.find(FIND_HOSTILE_STRUCTURES, {
-            filter: (s) => s.structureType === STRUCTURE_KEEPER_LAIR,
-        }).length > 0;
-        if (hostiles || keeperLairs) {
-            mem.intel[roomName] = { lastScan: Game.time, viableSources: [] };
-            continue;
-        }
-        // Gather all sources with at least one open adjacent tile.
-        const sources = targetRoom.find(FIND_SOURCES);
-        const terrain = targetRoom.getTerrain();
-        const viableSources = [];
-        for (const source of sources) {
-            // Count open tiles around the source.
-            let openSlots = 0;
-            for (let dx = -1; dx <= 1; dx++) {
-                for (let dy = -1; dy <= 1; dy++) {
-                    if (dx === 0 && dy === 0)
-                        continue;
-                    const x = source.pos.x + dx;
-                    const y = source.pos.y + dy;
-                    if (x < 0 || x > 49 || y < 0 || y > 49)
-                        continue;
-                    if (terrain.get(x, y) !== TERRAIN_MASK_WALL)
-                        openSlots++;
-                }
-            }
-            if (openSlots > 0) {
-                viableSources.push({ id: source.id, room: roomName, openSlots });
-            }
-        }
-        mem.intel[roomName] = { lastScan: Game.time, viableSources };
+        mem.intel[roomName] = { lastScan: Game.time, viableSources: scanRemoteRoom(targetRoom) };
     }
 }
 /** Count remoteHarvesters already spawned for a given remote source. */

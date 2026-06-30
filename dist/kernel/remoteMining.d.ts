@@ -18,6 +18,25 @@
  */
 import { ensureRemoteMiningMemory, RemoteMiningMemory, RemoteSource } from "./remoteMiningMemory";
 import { buildCensus } from "../utils/census";
+/**
+ * Classify a single VISIBLE adjacent room for remote mining: returns its sources
+ * that have at least one open adjacent tile, or `[]` if the room is off-limits.
+ *
+ * Off-limits = any owned controller (ours OR another player's), a room reserved
+ * by another player, or a room holding hostiles / source-keeper lairs.
+ *
+ * Excluding rooms WE own is the fix for the W44N38 bootstrap starvation. A room
+ * we own but have not yet given a spawn is a colony we are actively bootstrapping
+ * with pioneers. Remote-mining it is counter-productive: (a) remoteHarvesters are
+ * spawned from the home room AHEAD of pioneers (pioneers are only requested once
+ * the economy + remoteHarvester targets are met), so an unmet remote target keeps
+ * pioneers from ever spawning; and (b) the remoteHarvesters would contend with
+ * those pioneers for the new room's own source energy. Once the room has a spawn
+ * it runs its own static miners — it is never a remote-mining target either way.
+ *
+ * Pure given a visible room, so it is unit-tested directly (no getRoomData).
+ */
+export declare function scanRemoteRoom(targetRoom: Room): RemoteSource[];
 /** Pick the best unassigned remote source for a given home room. */
 export declare function pickRemoteSource(homeRoom: string, mem: RemoteMiningMemory): RemoteSource | null;
 export interface RemoteMiningSpawnRequest {

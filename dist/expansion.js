@@ -105,6 +105,20 @@ function pickBaseRoom() {
     }
     return best;
 }
+/**
+ * The first owned room we control that still has no spawn — a colony whose
+ * bootstrap never finished. Detected straight off live reality (`myRooms()`
+ * reads `Game.rooms`), so a persisted expansion state that flaked out self-heals.
+ * A base room always has a spawn, so this only ever surfaces an INCOMPLETE
+ * expansion that must be driven to its first spawn.
+ */
+function ownedRoomNeedingBootstrap() {
+    for (const room of (0, roomData_1.myRooms)()) {
+        if (room.find(FIND_MY_SPAWNS).length === 0)
+            return room;
+    }
+    return null;
+}
 /** Gate: RCL ≥ 3 — scout early so intel is ready when GCL unlocks expansion. */
 function scoutingUnlocked(base) {
     if (!base.controller || base.controller.level < 3)
@@ -180,12 +194,30 @@ function pioneersFor(targetRoom) {
 // ---------------------------------------------------------------------------
 function runExpansionManager() {
     const mem = ensureMem();
+    // Reality-first: finish any in-progress colony before considering anything new.
+    // An owned room that still lacks its own spawn is a bootstrap that never
+    // completed; completing it is NOT a new expansion, so it bypasses every
+    // expansion gate (claim limit, storage reserve) and is driven straight off
+    // live reality rather than the persisted state. This self-heals the live
+    // W44N38 deadlock: the room was claimed exactly as ownedRooms reached GCL, then
+    // dropped out of "bootstrapping" the first tick it flickered out of vision (its
+    // remote-harvesters came and went), and the only path back into bootstrapping
+    // (claiming → bootstrapping) was now gate-closed — so the half-claimed room sat
+    // at RCL 1 with zero pioneers forever, downgrading toward loss.
+    const incomplete = ownedRoomNeedingBootstrap();
+    if (incomplete) {
+        mem.state = "bootstrapping";
+        mem.targetRoom = incomplete.name;
+        return;
+    }
     const base = pickBaseRoom();
     const canScout = base ? scoutingUnlocked(base) : false;
     const canExpand = base ? expansionUnlocked(base) : false;
-    // Dormant / fully gated off: keep state clean so nothing can wedge.
+    // Dormant / fully gated off: keep state clean so nothing can wedge. Never wipe
+    // an in-flight bootstrap, though — its target may simply be out of vision this
+    // tick; the bootstrapping case below only abandons on a VISIBLE loss of the room.
     if (!base || (!canScout && !canExpand)) {
-        if (mem.state !== "idle") {
+        if (mem.state !== "idle" && mem.state !== "bootstrapping") {
             mem.state = "idle";
             mem.targetRoom = undefined;
         }
@@ -249,7 +281,16 @@ function runExpansionManager() {
         }
         case "bootstrapping": {
             const room = mem.targetRoom ? Game.rooms[mem.targetRoom] : undefined;
-            if (!room || !room.controller || !room.controller.my) {
+            // No vision this tick: the half-built room just flickered out of sight as
+            // its creeps came and went. STAY in bootstrapping — aborting on a blind
+            // tick is exactly the bug that stranded W44N38 (one dark tick dropped it,
+            // and the gate to re-enter bootstrapping was closed). The reality-first
+            // self-heal at the top of this function re-asserts the target the moment we
+            // can see the room again.
+            if (!room)
+                break;
+            // Visible but no longer ours (downgraded away / claimed by another): abandon.
+            if (!room.controller || !room.controller.my) {
                 mem.state = "idle";
                 mem.targetRoom = undefined;
                 break;
