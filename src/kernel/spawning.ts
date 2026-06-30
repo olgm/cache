@@ -67,6 +67,29 @@ function runRoom(room: Room, census: Census): void {
   const remoteTarget = remoteHarvesterTargetForRoom(room);
   if (remoteTarget > 0) targets.remoteHarvester = remoteTarget;
 
+  // Merge pioneer target when an expansion room needs bootstrapping.  Pioneers
+  // must compete in the economy priority order (at priority 3, above builders
+  // and upgraders).  Gating them behind a fully-satisfied economy (old step 3)
+  // starved W44N38 of its first spawn for thousands of ticks: the home room
+  // perpetually wanted one more upgrader, so the spawn never reached the
+  // expansion step, and the claimed room sat at RCL 1 with zero pioneers.
+  // PIONEERS_PER_ROOM (3) is defined in expansion.ts; we replicate it here to
+  // keep the spawning module self-contained.
+  const PIONEERS_PER_ROOM = 3;
+  const expMem = Memory.expansion;
+  if (expMem && expMem.state === "bootstrapping" && expMem.targetRoom) {
+    let pioneersForTarget = 0;
+    for (const name in Game.creeps) {
+      const c = Game.creeps[name];
+      if (c.memory.role === "pioneer" && c.memory.targetRoom === expMem.targetRoom) {
+        pioneersForTarget++;
+      }
+    }
+    if (pioneersForTarget < PIONEERS_PER_ROOM) {
+      targets.pioneer = PIONEERS_PER_ROOM;
+    }
+  }
+
   // Per-tick reservations so two idle spawns don't duplicate a role / source.
   const reserved: Record<string, number> = {};
   const reservedSources = new Set<string>();
@@ -300,6 +323,17 @@ function trySpawnRole(
     if (!source) return false;
     memory.sourceId = source.id;
     memory.targetRoom = source.room;
+  }
+
+  if (role === "pioneer") {
+    // Pioneers need targetRoom so they travel to the expansion room.
+    // This is normally set by getExpansionSpawnRequest, but when pioneers
+    // compete in the economy priority loop (above) they come through
+    // trySpawnRole directly — the expansion memory is the source of truth.
+    const expMem = Memory.expansion;
+    if (expMem && expMem.targetRoom) {
+      memory.targetRoom = expMem.targetRoom;
+    }
   }
 
   return spawn.spawnCreep(body, name(role), { memory }) === OK;
