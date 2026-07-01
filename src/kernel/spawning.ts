@@ -169,14 +169,24 @@ function spawnEmergency(spawn: StructureSpawn, room: Room, data: RoomData): bool
  * ROLE_PRIORITY ordering decides whether builders ever get spawned ahead of the
  * upgrader fleet (see spawn-priority.test).
  *
- * Includes two starvation guards that prevent higher-priority roles from
+ * Includes four starvation guards that prevent higher-priority roles from
  * consuming every spawn cycle forever:
  *
  * 1. Builder-starvation guard: when construction sites exist and zero builders
  *    are alive or reserved, builder priority is temporarily elevated to 1.5
  *    (above hauler at 2, below miner at 1) so at least one builder spawns.
  *
- * 2. Upgrader-starvation guard: when GCL ≤ 2 (every control point gates
+ * 2. Storage-emergency guard: when a room at RCL 4+ has no built storage, the
+ *    builder corps is elevated to 1.5 until the FULL builder target is met
+ *    (not just until the first builder), so the 2-3 builders needed for a
+ *    30 000-energy storage actually materialise.
+ *
+ * 3. Bootstrapping-pioneer guard: when the expansion system is actively
+ *    bootstrapping a claimed room with no spawn, pioneer priority is elevated
+ *    to 1.7 (above hauler at 2, below storage-emergency builder at 1.5) so
+ *    pioneers are not starved by the home room's hauler demand.
+ *
+ * 4. Upgrader-starvation guard: when GCL ≤ 2 (every control point gates
  *    multi-room expansion) and the upgrader corps is below a minimum floor
  *    (scaled by RCL), upgrader priority is temporarily elevated to 2.5 (above
  *    hauler at 2, below miner at 1) so at least the floor count of upgraders
@@ -201,6 +211,41 @@ export function pickEconomyRole(
   const builderCount = roleCount(census, home, "builder") + (reserved.builder || 0);
   const builderStarved = builderTarget > 0 && builderCount === 0;
 
+  // Storage-emergency guard: when a room at RCL 4+ has no storage, the builder
+  // corps must be elevated above haulers in spawn priority until the FULL
+  // builder target is met, not just until one builder exists.  Without this,
+  // the builder-starvation guard deactivates the moment a single builder spawns,
+  // builder drops to priority 4, and hauler (priority 2) consumes every spawn
+  // cycle — so the 2-3 builders needed to finish a 30 000-energy storage never
+  // materialise, and storage sits at progress 0 forever.  Once storage exists
+  // the guard deactivates and normal priority ordering resumes.
+  // Guarded behind a typeof check for Node.js test compatibility.
+  let storageEmergency = false;
+  if (typeof Game !== "undefined") {
+    const room = Game.rooms[home];
+    const rcl = room?.controller?.level ?? 0;
+    const hasStorage = !!(room?.storage);
+    storageEmergency = rcl >= 4 && !hasStorage && builderTarget > 0 && builderCount < builderTarget;
+  }
+
+  // Bootstrapping-pioneer guard: when the expansion system is actively
+  // bootstrapping a claimed room that has no spawn, pioneer priority is
+  // elevated above hauler so the home room's hauler demand doesn't starve
+  // the expansion.  At 1.7, pioneer beats hauler (2) but still loses to a
+  // storage-emergency builder (1.5) — home construction wins, then pioneers
+  // get the next spawn cycle.  Without this, W44N38 sits at RCL 1 with zero
+  // pioneers forever because the home room perpetually needs one more hauler.
+  // Guarded behind a typeof check for Node.js test compatibility.
+  let bootstrappingPioneer = false;
+  if (typeof Game !== "undefined") {
+    const pioneerTarget = targets.pioneer || 0;
+    const pioneerCount = roleCount(census, home, "pioneer") + (reserved.pioneer || 0);
+    bootstrappingPioneer =
+      (Memory.expansion?.state === "bootstrapping") &&
+      pioneerTarget > 0 &&
+      pioneerCount < pioneerTarget;
+  }
+
   // Upgrader-starvation guard: when GCL is low (≤ 2) every control point
   // gates expansion — maintain a minimum upgrader corps so control points
   // keep flowing even while higher-priority roles (haulers) are under target.
@@ -223,10 +268,19 @@ export function pickEconomyRole(
   roles.sort((a, b) => {
     let pa = ROLE_PRIORITY[a];
     let pb = ROLE_PRIORITY[b];
-    if (builderStarved) {
+    if (builderStarved || storageEmergency) {
       // Elevate builder to 1.5: above hauler(2) + pioneer(3), below miner(1).
+      // The storageEmergency variant fires until the full target is met, not
+      // just until the first builder spawns, so storage construction gets the
+      // full builder corps it needs.
       if (a === "builder") pa = 1.5;
       if (b === "builder") pb = 1.5;
+    }
+    if (bootstrappingPioneer) {
+      // Elevate pioneer to 1.7: above hauler(2), below storage-emergency
+      // builder(1.5).  Home construction wins, then pioneers get cycles.
+      if (a === "pioneer") pa = 1.7;
+      if (b === "pioneer") pb = 1.7;
     }
     if (upgraderStarved) {
       // Elevate upgrader to 2.5: above hauler(2), below miner(1).

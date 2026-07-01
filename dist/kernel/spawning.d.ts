@@ -20,14 +20,24 @@ export declare function runSpawnManager(): void;
  * ROLE_PRIORITY ordering decides whether builders ever get spawned ahead of the
  * upgrader fleet (see spawn-priority.test).
  *
- * Includes two starvation guards that prevent higher-priority roles from
+ * Includes four starvation guards that prevent higher-priority roles from
  * consuming every spawn cycle forever:
  *
  * 1. Builder-starvation guard: when construction sites exist and zero builders
  *    are alive or reserved, builder priority is temporarily elevated to 1.5
  *    (above hauler at 2, below miner at 1) so at least one builder spawns.
  *
- * 2. Upgrader-starvation guard: when GCL ≤ 2 (every control point gates
+ * 2. Storage-emergency guard: when a room at RCL 4+ has no built storage, the
+ *    builder corps is elevated to 1.5 until the FULL builder target is met
+ *    (not just until the first builder), so the 2-3 builders needed for a
+ *    30 000-energy storage actually materialise.
+ *
+ * 3. Bootstrapping-pioneer guard: when the expansion system is actively
+ *    bootstrapping a claimed room with no spawn, pioneer priority is elevated
+ *    to 1.7 (above hauler at 2, below storage-emergency builder at 1.5) so
+ *    pioneers are not starved by the home room's hauler demand.
+ *
+ * 4. Upgrader-starvation guard: when GCL ≤ 2 (every control point gates
  *    multi-room expansion) and the upgrader corps is below a minimum floor
  *    (scaled by RCL), upgrader priority is temporarily elevated to 2.5 (above
  *    hauler at 2, below miner at 1) so at least the floor count of upgraders
