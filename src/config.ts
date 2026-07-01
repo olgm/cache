@@ -418,6 +418,22 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
       else               upg = 2;
     }
 
+    // Storage emergency: when a room at RCL 4+ has no storage, the colony is
+    // missing its mid-game energy buffer.  Storage unlocks the expansion gate,
+    // prevents energy waste when buffers fill, and is the single most important
+    // structure after the spawn.  Construction costs 30 000 energy — a major
+    // investment.  Temporarily cap the GCL push so more surplus energy routes
+    // into construction instead of being burned by an oversized upgrader fleet
+    // that starves the builder corps.  Once storage exists, the normal GCL push
+    // resumes with the full energy buffer behind it.
+    const storageMissing = rcl >= 4 && !storage;
+    if (storageMissing) {
+      // Hard cap at 3: leaves ~5-10 e/tick for construction, enough to finish
+      // storage in a reasonable timeframe instead of the builders idling at
+      // empty containers while upgraders burn every spare joule.
+      upg = Math.min(upg, 3);
+    }
+
     // GCL push: when GCL is low every control point counts — expansion is
     // gated on GCL.  Control points earned now compound into earlier multi-room
     // expansion — the single biggest strategic lever in the early game.
@@ -434,6 +450,9 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
     // base sustainable count — adding more mouths would starve everyone.
     // Without a controller container, we use spawn+extension fill as a proxy
     // (the only buffer the upgraders can draw from).
+    //
+    // NOTE: the storage-emergency cap above fires first, so even with full
+    // containers, the upgrader fleet stays at ≤3 until storage is built.
     if (Game.gcl.level === 1 || Game.gcl.level === 2) {
       let surplusFill: number;
       if (cc) {
@@ -501,6 +520,16 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
     targets.builder = Math.min(Math.max(1, Math.ceil(sites / 5)), rcl >= 4 ? 3 : 2);
   } else {
     targets.builder = 0;
+  }
+
+  // Storage emergency: when a room at RCL 4+ has no storage, the builder target
+  // floor is raised to ensure construction progresses.  Without this, the
+  // builder target is site-count-gated (sites / 5), and a room with few sites
+  // — or where the storage site is the only one left — would only allocate 1
+  // builder.  One builder spending half its ticks walking to refill cannot
+  // finish a 30 000-energy storage in a reasonable timeframe.
+  if (rcl >= 4 && !storage) {
+    targets.builder = Math.max(targets.builder || 0, rcl >= 5 ? 3 : 2);
   }
 
   // --- Defenders: only when threatened AND towers can't cover it. ---

@@ -71,19 +71,32 @@ function runBuilder(creep) {
         (0, movement_1.travel)(creep, new RoomPosition(25, 25, home), 20);
         return;
     }
-    if (creep.memory.working && creep.store[RESOURCE_ENERGY] === 0)
+    // Storage is the single most expensive structure (30 000 energy).  When a
+    // builder is targeting it, gather a full load before switching to "working"
+    // mode — each trip should deposit as much energy as possible, because the
+    // travel overhead on a 30 000-energy project is the dominant cost.  For
+    // everything else the normal half-capacity toggle (empty ↔ full) is fine.
+    const site = pickSite(creep);
+    const targetingStorage = site ? site.structureType === STRUCTURE_STORAGE : false;
+    const minEnergyToWork = targetingStorage
+        ? creep.store.getCapacity() * 0.85 // fill to 85 % before building storage
+        : 1; // normal: switch at first energy
+    if (creep.memory.working && creep.store[RESOURCE_ENERGY] === 0) {
         creep.memory.working = false;
-    else if (!creep.memory.working && creep.store.getFreeCapacity() === 0)
+    }
+    else if (!creep.memory.working && creep.store[RESOURCE_ENERGY] >= minEnergyToWork) {
         creep.memory.working = true;
+    }
     if (!creep.memory.working) {
         (0, energy_1.gatherEnergy)(creep, (0, roomData_1.getRoomData)(creep.room));
         return;
     }
+    // Re-fetch the site after gathering (it may have changed).
+    const buildSite = pickSite(creep);
     // 1. Build the highest-priority construction site.
-    const site = pickSite(creep);
-    if (site) {
-        if (creep.build(site) === ERR_NOT_IN_RANGE)
-            (0, movement_1.travel)(creep, site, 3);
+    if (buildSite) {
+        if (creep.build(buildSite) === ERR_NOT_IN_RANGE)
+            (0, movement_1.travel)(creep, buildSite, 3);
         return;
     }
     // 2. Repair what towers tend to neglect.
