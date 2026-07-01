@@ -418,22 +418,6 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
       else               upg = 2;
     }
 
-    // Storage emergency: when a room at RCL 4+ has no storage, the colony is
-    // missing its mid-game energy buffer.  Storage unlocks the expansion gate,
-    // prevents energy waste when buffers fill, and is the single most important
-    // structure after the spawn.  Construction costs 30 000 energy — a major
-    // investment.  Temporarily cap the GCL push so more surplus energy routes
-    // into construction instead of being burned by an oversized upgrader fleet
-    // that starves the builder corps.  Once storage exists, the normal GCL push
-    // resumes with the full energy buffer behind it.
-    const storageMissing = rcl >= 4 && !storage;
-    if (storageMissing) {
-      // Hard cap at 3: leaves ~5-10 e/tick for construction, enough to finish
-      // storage in a reasonable timeframe instead of the builders idling at
-      // empty containers while upgraders burn every spare joule.
-      upg = Math.min(upg, 3);
-    }
-
     // GCL push: when GCL is low every control point counts — expansion is
     // gated on GCL.  Control points earned now compound into earlier multi-room
     // expansion — the single biggest strategic lever in the early game.
@@ -450,9 +434,6 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
     // base sustainable count — adding more mouths would starve everyone.
     // Without a controller container, we use spawn+extension fill as a proxy
     // (the only buffer the upgraders can draw from).
-    //
-    // NOTE: the storage-emergency cap above fires first, so even with full
-    // containers, the upgrader fleet stays at ≤3 until storage is built.
     if (Game.gcl.level === 1 || Game.gcl.level === 2) {
       let surplusFill: number;
       if (cc) {
@@ -495,6 +476,22 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
         if (totalE > totalCap * 0.75) upg += 2;
         else if (totalE > totalCap * 0.5) upg += 1;
       }
+    }
+
+    // Storage emergency: when a room at RCL 4+ has no storage, the colony is
+    // missing its mid-game energy buffer.  Storage unlocks the expansion gate,
+    // prevents energy waste when buffers fill, and is the single most important
+    // structure after the spawn.  Construction costs 30 000 energy — a major
+    // investment.  The upgrader corps is capped at 3 so surplus energy routes
+    // into construction instead of being burned by an oversized upgrader fleet
+    // that starves the builder corps.  This cap MUST fire AFTER the GCL push
+    // and waste detection: both use Math.max / additive bumps that would
+    // otherwise undo the cap (the live "storage:0 at RCL 5 with 5 upgraders"
+    // bug).  Once storage exists, the normal GCL push resumes with the full
+    // energy buffer behind it.
+    const storageMissing = rcl >= 4 && !storage;
+    if (storageMissing) {
+      upg = Math.min(upg, 3);
     }
 
     // No dedicated supply (neither a controller container NOR storage): upgraders
