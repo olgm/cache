@@ -173,8 +173,8 @@ function spawnEmergency(spawn, room, data) {
  *
  * 3. Bootstrapping-pioneer guard: when the expansion system is actively
  *    bootstrapping a claimed room with no spawn, pioneer priority is elevated
- *    to 1.7 (above hauler at 2, below storage-emergency builder at 1.5) so
- *    pioneers are not starved by the home room's hauler demand.
+ *    to 1.2 (above storage-emergency builder at 1.5 and hauler at 2, below
+ *    miner at 1) so pioneers are not starved by the home room's demands.
  *
  * 4. Upgrader-starvation guard: when GCL ≤ 2 (every control point gates
  *    multi-room expansion) and the upgrader corps is below a minimum floor
@@ -260,12 +260,17 @@ function pickEconomyRole(targets, census, home, reserved) {
                 pb = 1.5;
         }
         if (bootstrappingPioneer) {
-            // Elevate pioneer to 1.7: above hauler(2), below storage-emergency
-            // builder(1.5).  Home construction wins, then pioneers get cycles.
+            // Elevate pioneer to 1.2: above storage-emergency builder(1.5) AND
+            // hauler(2), below miner(1).  A claimed room without a spawn generates
+            // ZERO control points and eventually downgrades — the pioneer that
+            // builds the spawn unlocks the new room's entire economy, which is a
+            // force-multiplier worth more than one extra builder cycle in the home
+            // room.  Once the spawn exists the bootstrapping state resolves and
+            // the priority bump deactivates.
             if (a === "pioneer")
-                pa = 1.7;
+                pa = 1.2;
             if (b === "pioneer")
-                pb = 1.7;
+                pb = 1.2;
         }
         if (upgraderStarved) {
             // Elevate upgrader to 2.5: above hauler(2), below miner(1).

@@ -34,8 +34,8 @@ export declare function runSpawnManager(): void;
  *
  * 3. Bootstrapping-pioneer guard: when the expansion system is actively
  *    bootstrapping a claimed room with no spawn, pioneer priority is elevated
- *    to 1.7 (above hauler at 2, below storage-emergency builder at 1.5) so
- *    pioneers are not starved by the home room's hauler demand.
+ *    to 1.2 (above storage-emergency builder at 1.5 and hauler at 2, below
+ *    miner at 1) so pioneers are not starved by the home room's demands.
  *
  * 4. Upgrader-starvation guard: when GCL ≤ 2 (every control point gates
  *    multi-room expansion) and the upgrader corps is below a minimum floor
