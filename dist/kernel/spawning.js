@@ -103,6 +103,18 @@ function runRoom(room, census) {
                 stuck = true;
             continue;
         }
+        // 1.5. Bootstrapping emergency: a claimed room with zero pioneers is
+        // dead in the water — it can never build its first spawn, so the expansion
+        // generates ZERO control points and may downgrade.  Spawn a minimal pioneer
+        // immediately, sizing to energy on hand so this never stalls.  This path
+        // fires only when there are genuinely zero pioneers for the target (the
+        // "bootstrapping" state has already been set by the expansion manager's
+        // reality-first self-heal), and it outranks every economy role except the
+        // delivery-pipeline emergency above.
+        if (spawnBootstrappingEmergency(spawn, room, data, targets, census, reserved)) {
+            bump(reserved, "pioneer");
+            continue;
+        }
         // 2. Economy roles + remoteHarvester, by priority.
         const role = pickEconomyRole(targets, census, room.name, reserved);
         if (role) {
@@ -116,8 +128,19 @@ function runRoom(room, census) {
         }
         // 3. Expansion (scout / claimer / pioneer) once the economy is satisfied.
         const req = (0, expansion_1.getExpansionSpawnRequest)(room, data);
-        if (req && data.energyAvailable >= bodyCost(req.body)) {
-            spawnRequest(spawn, req);
+        if (req) {
+            // Fall back to available-energy sizing when the capacity body is
+            // unaffordable — a smaller expansion creep NOW is infinitely better
+            // than an idle spawn waiting for energy it may never accumulate while
+            // upgraders burn the surplus.
+            let body = req.body;
+            if (data.energyAvailable < bodyCost(req.body)) {
+                body = (0, config_1.bodyForRole)(req.role, data.energyAvailable, data.rcl);
+            }
+            if (data.energyAvailable >= bodyCost(body)) {
+                spawn.spawnCreep(body, name(req.role), { memory: req.memory });
+            }
+            // Don't set stuck here: expansion is a bonus, not a must-spawn.
         }
     }
     // Count consecutive stalled ticks; any successful spawn (or nothing wanted)
@@ -149,6 +172,54 @@ function spawnEmergency(spawn, room, data) {
     return spawn.spawnCreep(body, name("harvester"), {
         memory: { role: "harvester", homeRoom: room.name, bootstrap: true },
     }) === OK;
+}
+/**
+ * Bootstrapping emergency: when the expansion manager has set state to
+ * "bootstrapping" (a claimed room has no spawn) and zero pioneers exist for
+ * the target, spawn one immediately — sizing to energy on hand so it never
+ * stalls waiting for a capacity body.  This bypasses the economy priority
+ * system entirely, just like the delivery-pipeline emergency above.
+ *
+ * Pioneers are the ONLY way a spawn-less room can ever get its first spawn.
+ * A claimed room with no spawn generates ZERO control points and may
+ * downgrade; every tick without a pioneer en route is a tick the expansion
+ * colony is dead.  This emergency path guarantees at least one pioneer
+ * spawns as soon as the home spawn can scrape together a minimal body.
+ */
+function spawnBootstrappingEmergency(spawn, room, data, targets, census, reserved) {
+    // Only fire when the expansion system is actively bootstrapping AND this
+    // room is the base room (has the spawn that funds the expansion).
+    const expMem = Memory.expansion;
+    if (!expMem || expMem.state !== "bootstrapping" || !expMem.targetRoom)
+        return false;
+    // Count pioneers already alive or reserved this tick that target that room.
+    const pioneerTarget = targets.pioneer || 0;
+    if (pioneerTarget === 0)
+        return false; // pioneer not wanted (shouldn't happen)
+    let pioneersForTarget = 0;
+    for (const name in Game.creeps) {
+        const c = Game.creeps[name];
+        if (c.memory.role === "pioneer" && c.memory.targetRoom === expMem.targetRoom) {
+            pioneersForTarget++;
+        }
+    }
+    pioneersForTarget += reserved.pioneer || 0;
+    if (pioneersForTarget > 0)
+        return false; // at least one is already on the way
+    // Size to energy ON HAND — a minimal pioneer (200e) is infinitely better
+    // than waiting for a full-capacity body that may never be affordable while
+    // upgraders burn the surplus.
+    const minBudget = types_1.BODY_COST.work + types_1.BODY_COST.carry + types_1.BODY_COST.move; // 200e
+    const budget = Math.max(minBudget, data.energyAvailable);
+    const body = (0, config_1.bodyForRole)("pioneer", budget, data.rcl);
+    if (data.energyAvailable < bodyCost(body))
+        return false;
+    const memory = {
+        role: "pioneer",
+        homeRoom: room.name,
+        targetRoom: expMem.targetRoom,
+    };
+    return spawn.spawnCreep(body, name("pioneer"), { memory }) === OK;
 }
 // ---------------------------------------------------------------------------
 // Economy roles
