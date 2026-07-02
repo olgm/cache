@@ -93,6 +93,26 @@ export function runBuilder(creep: Creep): void {
   }
 
   if (!creep.memory.working) {
+    // Storage-emergency fast path: when the room has no storage but the
+    // builder is targeting a storage construction site, draw from the
+    // spawn/extensions buffer FIRST before walking to distant source
+    // containers.  The buffer is centrally located (near the storage site)
+    // and constantly refilled by haulers — every tick saved on travel is a
+    // tick spent building the 30 000-energy storage.  Without this, builders
+    // walk across the room to source containers, burning ~25 ticks per
+    // round-trip while the spawn sits on a full energy buffer.
+    const bdata = getRoomData(creep.room);
+    if (targetingStorage && !bdata.storage && bdata.rcl >= 4) {
+      const buffer = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
+        filter: (s) =>
+          (s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION) &&
+          s.store[RESOURCE_ENERGY] >= 50,
+      });
+      if (buffer) {
+        if (creep.withdraw(buffer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, buffer);
+        return;
+      }
+    }
     gatherEnergy(creep, getRoomData(creep.room));
     return;
   }
