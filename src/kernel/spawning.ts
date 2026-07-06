@@ -10,7 +10,7 @@
  * hand — the safety net that lets a colony recover from a wipe.
  */
 
-import { BODY_COST, CreepRole } from "../types";
+import { BODY_COST, CreepRole, SpawnErrorEntry, SPAWN_ERROR_CAP } from "../types";
 import { bodyForRole, roleTargets, ROLE_PRIORITY, RoleTargets } from "../config";
 import { buildCensus, Census, roleCount } from "../utils/census";
 import { getRoomData, myRooms, RoomData } from "../utils/roomData";
@@ -28,6 +28,25 @@ function bodyCost(body: BodyPartConstant[]): number {
   let c = 0;
   for (const p of body) c += BODY_COST[p];
   return c;
+}
+
+/**
+ * Ring-buffer capture of a NON-OK spawnCreep result so a SILENT spawn failure
+ * leaves a trace. Every spawnCreep call site funnels its return code here: OK is
+ * ignored (no news is good news); a non-OK code (ERR_RCL_NOT_ENOUGH,
+ * ERR_GCL_NOT_ENOUGH, ERR_BUSY, ERR_NAME_EXISTS, …) is appended to
+ * Memory.spawnErrors (newest-wins, capped at SPAWN_ERROR_CAP). The stats writer
+ * folds this into Memory.stats so SPARSE/the Overseer can see WHY a room stopped
+ * spawning — the "second room won't spawn" thesis previously left no signal at
+ * all. Additive + defensive: it only touches Memory and runs inside the spawn
+ * manager's per-room try/catch, so it can never break a tick. Exported for tests.
+ */
+export function recordSpawnResult(room: string, role: string, code: ScreepsReturnCode): void {
+  if (code === OK) return;
+  const buf: SpawnErrorEntry[] = Memory.spawnErrors || (Memory.spawnErrors = []);
+  buf.push({ room, role, code, tick: Game.time });
+  // Newest-wins: drop the oldest entries once we exceed the cap.
+  if (buf.length > SPAWN_ERROR_CAP) buf.splice(0, buf.length - SPAWN_ERROR_CAP);
 }
 
 export function runSpawnManager(): void {
@@ -145,7 +164,8 @@ function runRoom(room: Room, census: Census): void {
         body = bodyForRole(req.role, data.energyAvailable, data.rcl);
       }
       if (data.energyAvailable >= bodyCost(body)) {
-        spawn.spawnCreep(body, name(req.role), { memory: req.memory });
+        const code = spawn.spawnCreep(body, name(req.role), { memory: req.memory });
+        recordSpawnResult(room.name, req.role, code);
       }
       // Don't set stuck here: expansion is a bonus, not a must-spawn.
     }
@@ -178,9 +198,11 @@ function spawnEmergency(spawn: StructureSpawn, room: Room, data: RoomData): bool
   const budget = Math.max(BODY_COST.work + BODY_COST.carry + BODY_COST.move, data.energyAvailable);
   const body = bodyForRole("harvester", budget, data.rcl);
   if (data.energyAvailable < bodyCost(body)) return false;
-  return spawn.spawnCreep(body, name("harvester"), {
+  const code = spawn.spawnCreep(body, name("harvester"), {
     memory: { role: "harvester", homeRoom: room.name, bootstrap: true },
-  }) === OK;
+  });
+  recordSpawnResult(room.name, "harvester", code);
+  return code === OK;
 }
 
 /**
@@ -236,7 +258,9 @@ function spawnBootstrappingEmergency(
     homeRoom: room.name,
     targetRoom: expMem.targetRoom,
   };
-  return spawn.spawnCreep(body, name("pioneer"), { memory }) === OK;
+  const code = spawn.spawnCreep(body, name("pioneer"), { memory });
+  recordSpawnResult(room.name, "pioneer", code);
+  return code === OK;
 }
 
 // ---------------------------------------------------------------------------
@@ -475,7 +499,9 @@ function trySpawnRole(
     }
   }
 
-  return spawn.spawnCreep(body, name(role), { memory }) === OK;
+  const code = spawn.spawnCreep(body, name(role), { memory });
+  recordSpawnResult(room.name, role, code);
+  return code === OK;
 }
 
 /** A source with a container but no miner assigned (and not reserved this tick). */

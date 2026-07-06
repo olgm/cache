@@ -13,6 +13,18 @@ import { CreepRole } from "../types";
 import { RoleTargets } from "../config";
 import { Census } from "../utils/census";
 import { RoomData } from "../utils/roomData";
+/**
+ * Ring-buffer capture of a NON-OK spawnCreep result so a SILENT spawn failure
+ * leaves a trace. Every spawnCreep call site funnels its return code here: OK is
+ * ignored (no news is good news); a non-OK code (ERR_RCL_NOT_ENOUGH,
+ * ERR_GCL_NOT_ENOUGH, ERR_BUSY, ERR_NAME_EXISTS, …) is appended to
+ * Memory.spawnErrors (newest-wins, capped at SPAWN_ERROR_CAP). The stats writer
+ * folds this into Memory.stats so SPARSE/the Overseer can see WHY a room stopped
+ * spawning — the "second room won't spawn" thesis previously left no signal at
+ * all. Additive + defensive: it only touches Memory and runs inside the spawn
+ * manager's per-room try/catch, so it can never break a tick. Exported for tests.
+ */
+export declare function recordSpawnResult(room: string, role: string, code: ScreepsReturnCode): void;
 export declare function runSpawnManager(): void;
 /**
  * Pick the highest-priority role this room is under target on (or null if all
