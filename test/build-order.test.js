@@ -1,11 +1,17 @@
 /**
- * Tests for two economy follow-ups:
+ * Tests for three economy follow-ups:
  *  (a) the hauler's surplus-dump builds by BUILD_PRIORITY (towers/storage before
  *      extensions/roads) via the shared pickSiteByPriority helper, instead of
  *      whatever site is merely nearest.
  *  (b) the upgrader target is not inflated to 6 when the room has no dedicated
  *      controller supply (no controller container AND no storage) — those
  *      upgraders would just walk to distant source containers and starve.
+ *  (c) the storage-emergency cap: while a RCL 4+ room still lacks its storage
+ *      buffer the upgrader target is clamped to 3 (even with a full controller
+ *      container), and the clamp lifts once a storage structure exists — so
+ *      surplus energy finishes the 30 000-energy storage instead of feeding an
+ *      oversized upgrader fleet that starves the builders (the 2026-06-27
+ *      no-storage-brittleness lesson; config.ts `rcl >= 4 && !storage`).
  *
  * Runs against compiled dist/ (CommonJS); `npm test` builds first. builder.js
  * constructs BUILD_PRIORITY with computed STRUCTURE_* keys at module load, so
@@ -92,9 +98,32 @@ test("upgrader target is capped without a controller container or storage", () =
   assert.ok(t.upgrader <= 4, `expected <= 4 without a dedicated supply, got ${t.upgrader}`);
 });
 
-test("upgrader push is unrestricted once a controller container supplies them", () => {
+// The GCL push / full controller-container fill would otherwise drive the target
+// to 5-6, but the storage-emergency cap (config.ts roleTargets:
+// `rcl >= 4 && !storage -> Math.min(upg, 3)`, applied AFTER the GCL push so the
+// Math.max floors can't undo it) clamps it to 3 while a RCL 4+ room still lacks
+// its storage buffer. A full controller container does NOT lift the cap — only
+// building storage does. This is the storage-first sequencing that avoids the
+// 2026-06-27 no-storage-collapse brittleness (surplus routes into the 30 000e
+// storage build instead of an oversized upgrader fleet that starves the builders).
+test("upgrader push is CAPPED at 3 at RCL 4+ while storage is missing, even with a full controller container", () => {
   const t = roleTargets(roomData({ controllerContainer: { store: fakeStore(2000, 2000) } }), {});
-  assert.ok(t.upgrader >= 5, `expected >= 5 with a full controller container, got ${t.upgrader}`);
+  assert.ok(t.upgrader <= 3, `expected <= 3 at RCL 4+ without storage, got ${t.upgrader}`);
+});
+
+test("upgrader push is unrestricted once a storage structure exists to buffer the surplus", () => {
+  // Same room, now WITH a storage structure: `rcl >= 4 && !storage` is false, so
+  // the storage-emergency cap never fires and the GCL push / storage-fill drives
+  // the target back up to 5-6. Matches the live colony (W43N38 RCL 6 WITH storage
+  // runs ~5 upgraders — the cap simply does not bind, no live/test discrepancy).
+  const t = roleTargets(
+    roomData({
+      controllerContainer: { store: fakeStore(2000, 2000) },
+      storage: { store: fakeStore(50000, 1000000) },
+    }),
+    {},
+  );
+  assert.ok(t.upgrader >= 5, `expected >= 5 once storage buffers the surplus, got ${t.upgrader}`);
 });
 
 // ---- miner body is regen-capped (no more 1800e miners) -----------------------
