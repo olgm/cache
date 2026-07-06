@@ -74,23 +74,27 @@ test("pickEconomyRole starvation-guard: builder beats hauler when zero builders 
   assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "builder");
 });
 
-test("pickEconomyRole hauler fills before builder when builders already exist", () => {
-  // Guard deactivates once at least one builder is alive — hauler resumes its
-  // normal priority above builder.
+test("pickEconomyRole hauler fills before builder when builders already exist and catch-up is inactive", () => {
+  // Builder catch-up guard only fires when builderCount ≤ ceil(target/3).
+  // With builderTarget=3, catch-up fires at count ≤ 1.  At count=2 it is
+  // inactive, so hauler (priority 2) beats builder (storage-emergency 1.5).
   const targets = { harvester: 2, miner: 1, hauler: 6, upgrader: 6, builder: 3 };
-  const census = censusFor("W43N38", { harvester: 2, miner: 1, hauler: 4, builder: 1 });
+  const census = censusFor("W43N38", { harvester: 2, miner: 1, hauler: 4, builder: 2 });
   assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "hauler");
 });
 
-test("pickEconomyRole starvation-guard: miner and harvester still outrank a starved builder", () => {
-  // Even when builders are starved, the energy pipeline (harvester/miner) is more
-  // fundamental — they must spawn first or the room collapses entirely.
+test("pickEconomyRole builder catch-up: critically-short builder beats harvester replacement", () => {
+  // When builders are at ≤ ⅓ of target (target ≥ 3), the catch-up guard
+  // elevates builder to -0.5 — above even harvester replacement.  This lets
+  // the builder corps escape the 1-builder trap where harvester churn
+  // consumes every spawn cycle and construction stalls forever.
   const targets = { harvester: 2, miner: 1, hauler: 7, builder: 3 };
   const census = censusFor("W43N38", { harvester: 1, miner: 1, hauler: 6 });
-  assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "harvester");
+  assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "builder");
 
+  // Builder catch-up also beats miner when both are under target.
   const census2 = censusFor("W43N38", { harvester: 2, miner: 0, hauler: 6 });
-  assert.equal(pickEconomyRole(targets, census2, "W43N38", {}), "miner");
+  assert.equal(pickEconomyRole(targets, census2, "W43N38", {}), "builder");
 });
 
 test("pickEconomyRole spawns upgraders once builders are satisfied", () => {

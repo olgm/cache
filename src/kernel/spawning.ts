@@ -169,6 +169,14 @@ function runRoom(room: Room, census: Census): void {
       }
       // Don't set stuck here: expansion is a bonus, not a must-spawn.
     }
+
+    // 4. Cross-room rescue: when another owned room has a dead spawn (stalled
+    //    for many ticks with zero harvesters), use this room's idle spawn to
+    //    create a rescue harvester assigned to the dead room.  The harvester
+    //    travels to its home room, starts mining, and restarts the dead
+    //    spawn's energy flow.  This is the ONLY way out of the "spawn has 0
+    //    energy and cannot self-recover" deadlock (W44N38 at spawnStall 1332).
+    if (tryRescueDeadRoom(spawn, room, data, census)) continue;
   }
 
   // Count consecutive stalled ticks; any successful spawn (or nothing wanted)
@@ -261,6 +269,61 @@ function spawnBootstrappingEmergency(
   const code = spawn.spawnCreep(body, name("pioneer"), { memory });
   recordSpawnResult(room.name, "pioneer", code);
   return code === OK;
+}
+
+/**
+ * Cross-room rescue: when a room we own has a dead spawn (stalled for many
+ * ticks with zero harvesters, e.g. W44N38 at spawnStall 1332 with 0 energy
+ * harvested), use a HEALTHY room's idle spawn to create a rescue harvester
+ * assigned to the dead room.
+ *
+ * The rescue harvester is spawned in the rescuing room but has homeRoom set to
+ * the dead room.  It travels there immediately, starts mining from the dead
+ * room's sources, and delivers energy to the dead spawn — breaking the "spawn
+ * has no energy → can't spawn harvesters → spawn stays empty" deadlock.
+ *
+ * Only fires when this room's own economy is satisfied (the spawn was idle
+ * after economy + expansion steps) and has enough energy to afford at least a
+ * minimal harvester body (250 e).  Rescues at most one dead room per tick.
+ */
+function tryRescueDeadRoom(
+  spawn: StructureSpawn,
+  room: Room,
+  data: RoomData,
+  census: Census,
+): boolean {
+  // Don't rescue if this room can barely afford its own creeps.
+  if (data.energyAvailable < 250) return false;
+
+  for (const other of myRooms()) {
+    if (other.name === room.name) continue;
+    const otherData = getRoomData(other);
+    if (otherData.spawns.length === 0) continue; // nothing to rescue
+
+    const stall = other.memory.spawnStall || 0;
+    if (stall < 200) continue; // not dead long enough — avoid false positives
+
+    // Verify via census (cheap, already built): the dead room has zero harvesters.
+    const otherHarvesters = roleCount(census, other.name, "harvester");
+    if (otherHarvesters > 0) {
+      // Harvesters exist — reset the stall counter in case it was stale.
+      other.memory.spawnStall = 0;
+      continue;
+    }
+
+    // Spawn a minimal harvester for the dead room.  Size to energy on hand so
+    // the rescue never stalls on budget — a small harvester that arrives NOW
+    // is infinitely better than a fat one that waits for capacity.
+    const body = bodyForRole("harvester", data.energyAvailable, data.rcl);
+    if (data.energyAvailable < bodyCost(body)) return false;
+
+    const code = spawn.spawnCreep(body, name("harvester"), {
+      memory: { role: "harvester", homeRoom: other.name },
+    });
+    recordSpawnResult(room.name, "harvester", code);
+    return code === OK;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +432,26 @@ export function pickEconomyRole(
       Game.gcl.level <= 2 && upgraderTarget > 0 && upgraderCount < upgraderFloor;
   }
 
+  // Builder catch-up guard: when builders are critically below target during
+  // bootstrap or storage-emergency (target ≥ 3, only 0–1 builders alive),
+  // temporarily elevate builder priority ABOVE harvester (priority -0.5 vs 0).
+  //
+  // Without this, the constant churn of harvester replacements (one dies every
+  // ~250 ticks) consumes every spawn cycle and the builder count never rises
+  // above 1 — the observed "RCL 6, target 5 builders, only 1 alive" pathology
+  // where source containers and storage sit unbuilt for thousands of ticks
+  // because the spawn is too busy replacing dying harvesters to ever spawn a
+  // 2nd builder.  This guard lets the builder corps catch up from 1 to ~3
+  // (ceil(target/3) threshold), roughly tripling construction throughput.
+  //
+  // Only fires when the room genuinely needs builders — storageEmergency
+  // already covers the "no storage at RCL 4+" scenario, and the guard
+  // deactivates once the count reaches ⅓ of target (typically 2 builders for
+  // a target of 5).  In normal post-bootstrap operation builders don't need
+  // this extreme elevation; the storage-emergency guard at 1.5 suffices.
+  const builderCatchUp =
+    builderTarget >= 3 && builderCount <= Math.ceil(builderTarget / 3);
+
   roles.sort((a, b) => {
     let pa = ROLE_PRIORITY[a];
     let pb = ROLE_PRIORITY[b];
@@ -397,6 +480,16 @@ export function pickEconomyRole(
       // so construction-critical builders always come first.
       if (a === "upgrader") pa = 2.5;
       if (b === "upgrader") pb = 2.5;
+    }
+    if (builderCatchUp) {
+      // Elevate builder to -0.5: above harvester(0) so builders can catch up
+      // from a severe shortage (0-1 builders vs target ≥ 3).  This is the
+      // strongest elevation — it beats EVERY economy role including harvester
+      // replacement, which is the root cause of the persistent 1-builder trap.
+      // Once the count reaches the threshold the guard deactivates and normal
+      // ordering resumes.
+      if (a === "builder") pa = -0.5;
+      if (b === "builder") pb = -0.5;
     }
     return pa - pb;
   });
