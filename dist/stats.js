@@ -18,6 +18,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.writeStats = writeStats;
+const types_1 = require("./types");
 const roomData_1 = require("./utils/roomData");
 /** Max energy a source yields per tick (its regen rate: 3000 energy / 300 ticks). */
 const SOURCE_MAX_PER_TICK = 10;
@@ -109,6 +110,24 @@ function writeStats() {
         creepsByRole,
         spawnQueues,
     };
+    // Fold recent NON-OK spawn failures (a snapshot of the persisted ring buffer)
+    // so SPARSE sees WHY a room stopped spawning. Newest-wins slice; omitted when
+    // empty to keep the blob quiet. Memory.spawnErrors persists across the per-tick
+    // Memory.stats reassignment, so this is a copy, not the live buffer.
+    const spawnErrors = Memory.spawnErrors;
+    if (spawnErrors && spawnErrors.length) {
+        stats.spawnErrors = spawnErrors.slice(-types_1.SPAWN_ERROR_CAP);
+    }
+    // Fold a compact expansion snapshot so the always-read stats blob answers
+    // "is the second room progressing?" without a separate Memory.expansion read.
+    const exp = Memory.expansion;
+    if (exp) {
+        stats.expansion = {
+            state: exp.state,
+            targetRoom: exp.targetRoom,
+            ownedRooms: Object.keys(rooms).length,
+        };
+    }
     Memory.stats = stats;
 }
 //# sourceMappingURL=stats.js.map

@@ -66,10 +66,40 @@ declare global {
   interface Memory {
     expansion?: ExpansionMemory;
     stats?: CacheStats;
+    /**
+     * Bounded, newest-wins ring buffer of recent NON-OK spawnCreep return codes
+     * (see SpawnErrorEntry). Persisted here (a stable top-level slot) rather than
+     * on Memory.stats, because Memory.stats is REASSIGNED every tick — the stats
+     * writer folds a snapshot of this into Memory.stats.spawnErrors for SPARSE to
+     * read. A silent spawn failure (e.g. a claimed room that never spawns) used
+     * to leave no trace anywhere; this is that trace.
+     */
+    spawnErrors?: SpawnErrorEntry[];
     /** Schema version, bumped to trigger one-time migrations in main.ts. */
     version?: number;
   }
 }
+
+// --- Spawn diagnostics ---
+
+/**
+ * One captured spawn failure: which room's spawn tried to make which role, the
+ * non-OK return code the game gave, and the tick. Every spawnCreep call site
+ * funnels its return code into this so a silent failure is visible to SPARSE.
+ */
+export interface SpawnErrorEntry {
+  /** Room whose spawn attempted the creep. */
+  room: string;
+  /** Role that failed to spawn. */
+  role: string;
+  /** The non-OK ScreepsReturnCode (e.g. ERR_RCL_NOT_ENOUGH = -14). */
+  code: number;
+  /** Game tick the failure occurred at. */
+  tick: number;
+}
+
+/** Max spawn-error entries retained (newest-wins). Small: this is a recent-signal buffer, not a log. */
+export const SPAWN_ERROR_CAP = 10;
 
 // --- Expansion types ---
 
@@ -147,4 +177,16 @@ export interface CacheStats {
   >;
   creepsByRole: Record<string, number>;
   spawnQueues: number;
+  /**
+   * Recent NON-OK spawn return codes (a snapshot of Memory.spawnErrors). Additive
+   * — SPARSE ignores unknown fields, so an older reader is unaffected; a spawn-aware
+   * reader sees WHY a room stopped spawning instead of guessing. Absent when empty.
+   */
+  spawnErrors?: SpawnErrorEntry[];
+  /**
+   * Compact expansion snapshot folded from Memory.expansion, so the always-read
+   * stats blob answers "is the second room progressing?" without a separate
+   * Memory read. Additive/optional.
+   */
+  expansion?: { state: string; targetRoom?: string; ownedRooms: number };
 }

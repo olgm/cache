@@ -11,6 +11,7 @@
  * hand — the safety net that lets a colony recover from a wipe.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.recordSpawnResult = recordSpawnResult;
 exports.runSpawnManager = runSpawnManager;
 exports.pickEconomyRole = pickEconomyRole;
 exports.economyBudget = economyBudget;
@@ -26,6 +27,26 @@ function bodyCost(body) {
     for (const p of body)
         c += types_1.BODY_COST[p];
     return c;
+}
+/**
+ * Ring-buffer capture of a NON-OK spawnCreep result so a SILENT spawn failure
+ * leaves a trace. Every spawnCreep call site funnels its return code here: OK is
+ * ignored (no news is good news); a non-OK code (ERR_RCL_NOT_ENOUGH,
+ * ERR_GCL_NOT_ENOUGH, ERR_BUSY, ERR_NAME_EXISTS, …) is appended to
+ * Memory.spawnErrors (newest-wins, capped at SPAWN_ERROR_CAP). The stats writer
+ * folds this into Memory.stats so SPARSE/the Overseer can see WHY a room stopped
+ * spawning — the "second room won't spawn" thesis previously left no signal at
+ * all. Additive + defensive: it only touches Memory and runs inside the spawn
+ * manager's per-room try/catch, so it can never break a tick. Exported for tests.
+ */
+function recordSpawnResult(room, role, code) {
+    if (code === OK)
+        return;
+    const buf = Memory.spawnErrors || (Memory.spawnErrors = []);
+    buf.push({ room, role, code, tick: Game.time });
+    // Newest-wins: drop the oldest entries once we exceed the cap.
+    if (buf.length > types_1.SPAWN_ERROR_CAP)
+        buf.splice(0, buf.length - types_1.SPAWN_ERROR_CAP);
 }
 function runSpawnManager() {
     const census = (0, census_1.buildCensus)();
@@ -138,7 +159,8 @@ function runRoom(room, census) {
                 body = (0, config_1.bodyForRole)(req.role, data.energyAvailable, data.rcl);
             }
             if (data.energyAvailable >= bodyCost(body)) {
-                spawn.spawnCreep(body, name(req.role), { memory: req.memory });
+                const code = spawn.spawnCreep(body, name(req.role), { memory: req.memory });
+                recordSpawnResult(room.name, req.role, code);
             }
             // Don't set stuck here: expansion is a bonus, not a must-spawn.
         }
@@ -169,9 +191,11 @@ function spawnEmergency(spawn, room, data) {
     const body = (0, config_1.bodyForRole)("harvester", budget, data.rcl);
     if (data.energyAvailable < bodyCost(body))
         return false;
-    return spawn.spawnCreep(body, name("harvester"), {
+    const code = spawn.spawnCreep(body, name("harvester"), {
         memory: { role: "harvester", homeRoom: room.name, bootstrap: true },
-    }) === OK;
+    });
+    recordSpawnResult(room.name, "harvester", code);
+    return code === OK;
 }
 /**
  * Bootstrapping emergency: when the expansion manager has set state to
@@ -219,7 +243,9 @@ function spawnBootstrappingEmergency(spawn, room, data, targets, census, reserve
         homeRoom: room.name,
         targetRoom: expMem.targetRoom,
     };
-    return spawn.spawnCreep(body, name("pioneer"), { memory }) === OK;
+    const code = spawn.spawnCreep(body, name("pioneer"), { memory });
+    recordSpawnResult(room.name, "pioneer", code);
+    return code === OK;
 }
 // ---------------------------------------------------------------------------
 // Economy roles
@@ -440,7 +466,9 @@ function trySpawnRole(spawn, room, data, role, census, reserved, reservedSources
             memory.targetRoom = expMem.targetRoom;
         }
     }
-    return spawn.spawnCreep(body, name(role), { memory }) === OK;
+    const code = spawn.spawnCreep(body, name(role), { memory });
+    recordSpawnResult(room.name, role, code);
+    return code === OK;
 }
 /** A source with a container but no miner assigned (and not reserved this tick). */
 function pickFreeContainerSource(data, census, reservedSources) {

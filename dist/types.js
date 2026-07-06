@@ -9,8 +9,10 @@
  * single-room colony — re-introduce at RCL4+).
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BODY_COST = void 0;
+exports.BODY_COST = exports.SPAWN_ERROR_CAP = void 0;
 exports.defaultExpansionMemory = defaultExpansionMemory;
+/** Max spawn-error entries retained (newest-wins). Small: this is a recent-signal buffer, not a log. */
+exports.SPAWN_ERROR_CAP = 10;
 function defaultExpansionMemory() {
     return { state: "idle", scoutedRooms: {}, intel: {} };
 }
