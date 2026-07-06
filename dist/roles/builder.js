@@ -75,6 +75,13 @@ function runBuilder(creep) {
     // pickSite / gatherEnergy free, and we need it both for the storage-emergency
     // fast path and the spawn-refill emergency below.
     const data = (0, roomData_1.getRoomData)(creep.room);
+    // BOOTSTRAP: no source container exists yet.  Without containers, builders
+    // must walk to gather energy, and every round-trip burns ~30 ticks.  The old
+    // minEnergyToWork=1 meant builders gathered one tick's worth of energy per
+    // trip — 30 ticks of travel for 1 tick of building (~3 % uptime).  Filling
+    // to 80 % capacity per trip cuts round-trips by ~16×, raising uptime to
+    // ~50 % and letting source containers actually finish before RCL 8.
+    const bootstrapping = data.sources.every((s) => !s.container);
     // Storage is the single most expensive structure (30 000 energy).  When a
     // builder is targeting it, gather a full load before switching to "working"
     // mode — each trip should deposit as much energy as possible, because the
@@ -82,8 +89,8 @@ function runBuilder(creep) {
     // everything else the normal half-capacity toggle (empty ↔ full) is fine.
     const site = pickSite(creep);
     const targetingStorage = site ? site.structureType === STRUCTURE_STORAGE : false;
-    const minEnergyToWork = targetingStorage
-        ? creep.store.getCapacity() * 0.85 // fill to 85 % before building storage
+    const minEnergyToWork = targetingStorage || bootstrapping
+        ? creep.store.getCapacity() * 0.8 // fill to 80 % before building in bootstrap / storage
         : 1; // normal: switch at first energy
     if (creep.memory.working && creep.store[RESOURCE_ENERGY] === 0) {
         creep.memory.working = false;
@@ -92,15 +99,26 @@ function runBuilder(creep) {
         creep.memory.working = true;
     }
     if (!creep.memory.working) {
-        // Storage-emergency fast path: when the room has no storage but the
-        // builder is targeting a storage construction site, draw from the
-        // spawn/extensions buffer FIRST before walking to distant source
-        // containers.  The buffer is centrally located (near the storage site)
-        // and constantly refilled by haulers — every tick saved on travel is a
-        // tick spent building the 30 000-energy storage.  Without this, builders
-        // walk across the room to source containers, burning ~25 ticks per
-        // round-trip while the spawn sits on a full energy buffer.
-        if (targetingStorage && !data.storage && data.rcl >= 4) {
+        // Fast gather from the spawn/extensions buffer when construction is
+        // bottlenecked on builder travel.  Two cases:
+        //
+        // 1. Storage emergency (RCL ≥ 4, no storage, targeting storage): the
+        //    buffer is centrally located near the storage site — every tick saved
+        //    on gather travel is a tick spent on the 30 000-energy storage.
+        //
+        // 2. Bootstrap (no source containers, RCL ≥ 3): builders are constructing
+        //    the source containers that unlock static mining.  Without this fast
+        //    path, builders walk to sources for every gather cycle, burning ~30
+        //    ticks per round-trip while the spawn/extensions buffer holds energy
+        //    that harvesters are constantly refilling.  Drawing from the buffer
+        //    cuts gather travel to near-zero and lets source containers complete
+        //    in ~200 ticks instead of ~2500.
+        //
+        // Both paths require the buffer structure to have ≥ 50 energy to avoid
+        // 1e micro-withdrawals that waste ticks.
+        const fastGather = (targetingStorage && !data.storage && data.rcl >= 4) ||
+            (bootstrapping && data.rcl >= 3);
+        if (fastGather) {
             const buffer = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
                 filter: (s) => (s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION) &&
                     s.store[RESOURCE_ENERGY] >= 50,

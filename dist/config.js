@@ -553,8 +553,19 @@ function roleTargets(data, current) {
     // — or where the storage site is the only one left — would only allocate 1
     // builder.  One builder spending half its ticks walking to refill cannot
     // finish a 30 000-energy storage in a reasonable timeframe.
+    //
+    // COMBINED EMERGENCY: when the room ALSO has no source containers
+    // (bootstrapping), every tick without source containers is a tick the room
+    // runs at ~20 % efficiency — no miners, no haulers, and harvesters that
+    // spend half their ticks walking.  Source containers unlock the entire static
+    // mining economy; a larger builder corps (5 vs 3) halves the escape time.
     if (rcl >= 4 && !storage) {
-        targets.builder = Math.max(targets.builder || 0, rcl >= 5 ? 3 : 2);
+        if (withContainer === 0) {
+            targets.builder = Math.max(targets.builder || 0, rcl >= 5 ? 5 : 4);
+        }
+        else {
+            targets.builder = Math.max(targets.builder || 0, rcl >= 5 ? 3 : 2);
+        }
     }
     // --- Defenders: only when threatened AND towers can't cover it. ---
     if (hostiles.length > 0 && towers.length === 0) {
