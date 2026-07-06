@@ -75,6 +75,11 @@ export function runBuilder(creep: Creep): void {
     return;
   }
 
+  // Fetch room data once — the per-tick cache makes subsequent calls in
+  // pickSite / gatherEnergy free, and we need it both for the storage-emergency
+  // fast path and the spawn-refill emergency below.
+  const data = getRoomData(creep.room);
+
   // Storage is the single most expensive structure (30 000 energy).  When a
   // builder is targeting it, gather a full load before switching to "working"
   // mode — each trip should deposit as much energy as possible, because the
@@ -101,8 +106,7 @@ export function runBuilder(creep: Creep): void {
     // tick spent building the 30 000-energy storage.  Without this, builders
     // walk across the room to source containers, burning ~25 ticks per
     // round-trip while the spawn sits on a full energy buffer.
-    const bdata = getRoomData(creep.room);
-    if (targetingStorage && !bdata.storage && bdata.rcl >= 4) {
+    if (targetingStorage && !data.storage && data.rcl >= 4) {
       const buffer = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
         filter: (s) =>
           (s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION) &&
@@ -113,8 +117,40 @@ export function runBuilder(creep: Creep): void {
         return;
       }
     }
-    gatherEnergy(creep, getRoomData(creep.room));
+    gatherEnergy(creep, data);
     return;
+  }
+
+  // ---- Spawn-refill emergency ----
+  // When a room has zero harvesters (the delivery pipeline has collapsed), the
+  // spawn cannot refill itself — it needs energy from creeps to spawn a new
+  // harvester, but it cannot spawn a harvester without energy.  This deadlock
+  // strands the room at spawnStall → ∞ with 0 energy throughput (the live
+  // W44N38 at RCL 3 with spawnStall 1099 and energyHarvested 0).
+  //
+  // A builder already in the room can break the deadlock: it gathers energy
+  // from sources via the normal gatherEnergy path, then transfers it to the
+  // spawn instead of building.  Once the spawn holds ≥200 energy (the minimum
+  // harvester body), the spawn manager's emergency path spawns a harvester,
+  // the harvester begins mining + refilling, and the room recovers.
+  //
+  // The guard deactivates as soon as at least one harvester exists, so the
+  // builder resumes normal construction work once the crisis is resolved.
+  if (data.spawns.length > 0) {
+    let harvesterCount = 0;
+    for (const name in Game.creeps) {
+      const c = Game.creeps[name];
+      if (c.memory.role === "harvester" && c.memory.homeRoom === home) harvesterCount++;
+    }
+    if (harvesterCount === 0) {
+      const emptySpawn = data.spawns.find((s) => s.store[RESOURCE_ENERGY] < 200);
+      if (emptySpawn) {
+        if (creep.transfer(emptySpawn, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+          travel(creep, emptySpawn);
+        }
+        return;
+      }
+    }
   }
 
   // Re-fetch the site after gathering (it may have changed).
