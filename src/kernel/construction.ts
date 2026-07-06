@@ -41,26 +41,51 @@ function planRoom(room: Room): void {
   if (!due) return;
   mem.lastPlan = Game.time;
 
-  // Don't queue more work while there is still a healthy backlog to build,
-  // unless a critical structure (storage) has no site and cannot be placed
-  // because its tiles are blocked by lower-priority sites — we must evict.
+  // Critical missing structures that must be placed even when the site queue
+  // is saturated.  Source containers unlock the static mining economy (miners +
+  // haulers), which raises energy throughput 2-3× and funds everything else.
+  // Storage is the mid-game energy buffer and expansion gate.  Both are
+  // exempted from the queue-full guard, and each gets a reserved budget slot
+  // so they don't starve each other when the queue is full.
   const storageMissing =
     allowance(room, STRUCTURE_STORAGE) > 0 &&
     countBuilt(room, STRUCTURE_STORAGE) === 0 &&
     countSites(room, STRUCTURE_STORAGE) === 0;
-  if (data.constructionSites.length >= MAX_SITES_PER_PASS && !storageMissing) return;
+  const sourceContainersMissing = data.sources.some(
+    (s) => !s.container && !s.containerSite,
+  );
+  if (
+    data.constructionSites.length >= MAX_SITES_PER_PASS &&
+    !storageMissing &&
+    !sourceContainersMissing
+  )
+    return;
 
   let budget = Math.max(1, MAX_SITES_PER_PASS - data.constructionSites.length);
+  // Reserve one slot per critical missing structure so both can be placed in a
+  // single pass even when the queue is full (the "storage at 0 after 7 cycles"
+  // bug: storage consumed the single slot, source containers never got sites,
+  // static mining never activated, and builders starved).
+  if (sourceContainersMissing) budget += 1;
+  if (storageMissing) budget += 1;
 
   // 1. A spawn, if this room has none (freshly-claimed expansion room).
   if (data.spawns.length === 0 && countSites(room, STRUCTURE_SPAWN) === 0 && allowance(room, STRUCTURE_SPAWN) > 0) {
     budget -= placeSpawn(room, data);
   }
 
-  // 2. Storage — when missing it is the critical mid-game unlock and the
-  //    expansion manager's gate.  Place it BEFORE containers because when the
-  //    site queue is full (≥12 sites) the budget shrinks to 1, and containers
-  //    would consume that last slot — storage would never get a site.
+  // 2. Source containers (one per source) and a controller container.
+  //    MUST come before storage: source containers unlock the static mining
+  //    economy, which is the prerequisite for the energy throughput needed to
+  //    build a 30 000-energy storage.  Placing storage first while source
+  //    containers are missing starves both — storage sits at 0 forever while
+  //    the bootstrap harvesters can't produce enough surplus.
+  budget -= planContainers(room, data, budget);
+  if (budget <= 0) return;
+
+  // 3. Storage — critical mid-game unlock.  Placement is deferred until after
+  //    source containers have sites, but its own reserved budget slot (above)
+  //    guarantees it still gets a site in the same pass when the queue is full.
   if (storageMissing && budget > 0) {
     const terrain = room.getTerrain();
     const anchor = new RoomPosition(mem.anchor!.x, mem.anchor!.y, room.name);
@@ -75,10 +100,6 @@ function planRoom(room: Room): void {
       else if (placeStorageAnywhere(room, data, terrain, anchor)) budget--;
     }
   }
-
-  // 3. Source containers (one per source) and a controller container.
-  budget -= planContainers(room, data, budget);
-  if (budget <= 0) return;
 
   // 4. Point structures on the checkerboard stamp (towers, remaining storage
   //    if step 2 couldn't place it, and extensions).

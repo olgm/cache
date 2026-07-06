@@ -34,6 +34,14 @@ export declare function workerBody(budget: number, maxRepeat: number): BodyPartC
  * (250e) gives a 2:1 carry-to-work ratio; leftover budget fills extra WORK
  * (faster mining → faster refill → more frequent trips) then CARRY if WORK
  * would exceed source regen rate.
+ *
+ * LOW-BUDGET FALLBACK: when energy is tight (budget < 250), the full unit is
+ * unaffordable.  Returning it anyway (the old code's `Math.max(1, …)`) produces
+ * a 250e body the spawn cannot afford — a permanent deadlock (W44N38's
+ * spawnStall=670).  The fallback [WORK, CARRY, MOVE] (200e) is less efficient
+ * but lets a deadlocked room recover: a minimal harvester that CAN be afforded
+ * restarts energy flow, and the spawn can replace it with a full-body harvester
+ * once the economy regains momentum.
  */
 export declare function harvesterBody(budget: number): BodyPartConstant[];
 /**
