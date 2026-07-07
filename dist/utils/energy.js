@@ -78,14 +78,20 @@ function gatherEnergy(creep, data) {
         return true;
     }
     // 6. Bootstrap shared buffer: with no containers/storage yet (steps 3-5 found
-    //    nothing), draw from spawn/extensions. Harvesters refill them, and the
-    //    spawn manager runs BEFORE creep dispatch each tick, so spawning always
-    //    claims its energy first — workers only ever take the leftover. This is
-    //    far more efficient than competing with harvesters for source tiles, and
-    //    is what lets the first extensions actually get built at cap=300.
+    //    nothing), draw from spawn/extensions — but ONLY when the buffer has
+    //    accumulated a meaningful amount (≥ 50 e).  Harvesters refill them at
+    //    ~2-4 e/tick during bootstrap; withdrawing 1-10 e every tick prevents the
+    //    spawn from ever reaching the 200 e needed for a new harvester, which is
+    //    the energy-poverty death spiral (live W43N38: 1 e / 2300 capacity, 2
+    //    harvesters, spawn can never afford a third).  A 50 e threshold matches
+    //    the builder fast-gather path and MIN_PICKUP, and lets the spawn
+    //    accumulate enough to spawn while still giving workers access when there
+    //    is real surplus.  The spawn manager runs BEFORE creep dispatch each tick,
+    //    so spawning always claims its energy first — workers only take what
+    //    spawning left behind.
     const buffer = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
         filter: (s) => (s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION) &&
-            s.store[RESOURCE_ENERGY] > 0,
+            s.store[RESOURCE_ENERGY] >= 50,
     });
     if (buffer) {
         if (creep.withdraw(buffer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE)

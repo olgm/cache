@@ -281,7 +281,7 @@ function tryRescueDeadRoom(spawn, room, data, census) {
         if (otherData.spawns.length === 0)
             continue; // nothing to rescue
         const stall = other.memory.spawnStall || 0;
-        if (stall < 200)
+        if (stall < 150)
             continue; // not dead long enough — avoid false positives
         // Verify via census (cheap, already built): the dead room has zero harvesters.
         const otherHarvesters = (0, census_1.roleCount)(census, other.name, "harvester");
@@ -423,7 +423,20 @@ function pickEconomyRole(targets, census, home, reserved) {
     // loses to any other under-target role and can never close the gap.  Keeping the
     // guard active until target is met guarantees the builder corps reaches its full
     // strength in one uninterrupted burst, roughly tripling construction throughput.
-    const builderCatchUp = builderTarget >= 3 && builderCount < builderTarget;
+    //
+    // ENERGY-POVERTY OVERRIDE: when the spawn+extensions buffer is critically low
+    // (< 200 e, the minimum harvester body), the catch-up guard DEACTIVATES so the
+    // natural priority order (harvester=0) wins.  Elevating builders above
+    // harvesters during an energy shortage starves the colony of producers — the
+    // spawn can afford neither, and when it finally scrapes together 200 e, it
+    // must spawn a HARVESTER (energy producer), not a builder (energy consumer).
+    // Guarded behind typeof check for Node.js test compatibility.
+    let energyCritical = false;
+    if (typeof Game !== "undefined") {
+        const room = Game.rooms[home];
+        energyCritical = !!(room && room.energyAvailable < 200);
+    }
+    const builderCatchUp = builderTarget >= 3 && builderCount < builderTarget && !energyCritical;
     roles.sort((a, b) => {
         let pa = config_1.ROLE_PRIORITY[a];
         let pb = config_1.ROLE_PRIORITY[b];
