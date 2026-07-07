@@ -98,6 +98,7 @@ function planRoom(room: Room): void {
       // back to placing storage anywhere walkable.
       if (evictExtensionSiteForStorage(room, anchor, terrain)) budget--;
       else if (placeStorageAnywhere(room, data, terrain, anchor)) budget--;
+      else if (forceStorageSite(room, data, terrain, anchor)) budget--;
     }
   }
 
@@ -124,6 +125,19 @@ function planRoom(room: Room): void {
   if (budget > 0 && data.rcl >= 3 && roadDue) {
     mem.lastRoadPlan = Game.time;
     budget -= planRoads(room, data, anchor, budget);
+  }
+
+  // Diagnostic: surface storage deadlocks so they don't go unnoticed for cycles.
+  if (allowance(room, STRUCTURE_STORAGE) > 0) {
+    const built = countBuilt(room, STRUCTURE_STORAGE);
+    const sites = countSites(room, STRUCTURE_STORAGE);
+    if (built > 0) {
+      console.log(`[construction] ${room.name}: storage built ✓`);
+    } else if (sites > 0) {
+      console.log(`[construction] ${room.name}: storage site placed, awaiting build`);
+    } else {
+      console.log(`[construction] ${room.name}: WARNING — storage missing (RCL ${room.controller?.level ?? '?'}), placement failed`);
+    }
   }
 }
 
@@ -378,6 +392,75 @@ function placeStorageAnywhere(
       }
     }
   }
+  return false;
+}
+
+/**
+ * Last-resort fallback: guarantee storage gets a construction site by
+ * sacrificing a non-critical site already occupying a buildable tile.
+ *
+ * Pass 1 — evict a non-critical site (road, rampart, container, or extension
+ *   that is over budget).
+ * Pass 2 — evict ANY construction site on a buildable tile, regardless of type.
+ *
+ * Returns true if a storage site was successfully placed.
+ */
+function forceStorageSite(
+  room: Room,
+  data: RoomData,
+  terrain: RoomTerrain,
+  anchor: RoomPosition,
+): boolean {
+  const extAllowance = allowance(room, STRUCTURE_EXTENSION);
+  const extBuilt = countBuilt(room, STRUCTURE_EXTENSION);
+  const extSites = countSites(room, STRUCTURE_EXTENSION);
+  const extOverBudget = extBuilt + extSites > extAllowance;
+
+  // Pass 1: evict a non-critical site.
+  for (let r = 0; r <= 23; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = anchor.x + dx;
+        const y = anchor.y + dy;
+        if (!inRoom(x, y)) continue;
+        if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
+        const sites = room.lookForAt(LOOK_CONSTRUCTION_SITES, x, y);
+        if (sites.length === 0) continue;
+        const site = sites[0];
+        const nonCritical =
+          site.structureType === STRUCTURE_ROAD ||
+          site.structureType === STRUCTURE_RAMPART ||
+          site.structureType === STRUCTURE_CONTAINER ||
+          (site.structureType === STRUCTURE_EXTENSION && extOverBudget);
+        if (!nonCritical) continue;
+        site.remove();
+        if (room.createConstructionSite(x, y, STRUCTURE_STORAGE) === OK) return true;
+      }
+    }
+  }
+
+  // Pass 2: evict ANY site on a buildable tile.
+  for (let r = 0; r <= 23; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = anchor.x + dx;
+        const y = anchor.y + dy;
+        if (!inRoom(x, y)) continue;
+        if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
+        const structs = room.lookForAt(LOOK_STRUCTURES, x, y);
+        const blocked = structs.some(
+          (s) => s.structureType !== STRUCTURE_ROAD && s.structureType !== STRUCTURE_RAMPART,
+        );
+        if (blocked) continue;
+        const sites = room.lookForAt(LOOK_CONSTRUCTION_SITES, x, y);
+        for (const site of sites) site.remove();
+        if (room.createConstructionSite(x, y, STRUCTURE_STORAGE) === OK) return true;
+      }
+    }
+  }
+
   return false;
 }
 
