@@ -11,5 +11,15 @@
  * for spawning, and draining it would stall creep production.
  */
 import { RoomData } from "./roomData";
-/** True if the creep issued a gather action (move/withdraw/pickup/harvest). */
-export declare function gatherEnergy(creep: Creep, data: RoomData): boolean;
+/**
+ * Gather energy from the best available source.
+ *
+ * @param creep        The creep that needs energy.
+ * @param data         Per-tick cached room snapshot.
+ * @param minSpawnDrain Minimum energy a spawn/extension must hold before step 6
+ *                      will withdraw from it (default 50).  Callers that have a
+ *                      dedicated supply (e.g. upgraders with a controller
+ *                      container) pass a higher value to avoid draining the
+ *                      spawn and stalling creep production.
+ */
+export declare function gatherEnergy(creep: Creep, data: RoomData, minSpawnDrain?: number): boolean;

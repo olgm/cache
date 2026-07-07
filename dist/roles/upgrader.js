@@ -134,8 +134,20 @@ function runUpgrader(creep) {
         // without any energy arriving, the haulers are behind or dead.  Fall back
         // to the general energy pool rather than idling forever — every tick the
         // controller isn't being upgraded is a tick of wasted GCL/RCL progress.
+        //
+        // SPAWN-DRAIN GUARD: when source containers exist (static mining active),
+        // the upgrader must NOT withdraw from spawn/extensions.  The source
+        // containers are the correct energy supply; draining the spawn starves
+        // creep production and locks the room in a low-energy equilibrium where
+        // the spawn can never accumulate enough to replace a weak miner (the live
+        // W44N38: spawn at 59 e, 1-WORK miner, upgraders drain spawn → spawn
+        // stays at 59 forever).  Passing minSpawnDrain=200 effectively disables
+        // step 6 for post-bootstrap rooms — the upgrader walks to source
+        // containers or harvests directly, which is less efficient than a
+        // controller container but does not sabotage the colony's spawning.
         if (idleTicks >= PARK_TIMEOUT) {
-            (0, energy_1.gatherEnergy)(creep, data);
+            const hasSourceContainers = data.sources.some((s) => s.container);
+            (0, energy_1.gatherEnergy)(creep, data, hasSourceContainers ? 200 : 50);
             return;
         }
         creep.memory.upgraderIdleTicks = idleTicks + 1;
@@ -160,7 +172,13 @@ function runUpgrader(creep) {
             }
         }
     }
-    (0, energy_1.gatherEnergy)(creep, data);
+    // SPAWN-DRAIN GUARD: when source containers exist, the upgrader must not
+    // fall back to draining spawn/extensions via gatherEnergy step 6.  Source
+    // containers are the correct supply; draining the spawn starves creep
+    // production.  (Same guard as the PARK_TIMEOUT path above for rooms that
+    // have source containers but no controller container yet.)
+    const hasSourceContainers = data.sources.some((s) => s.container);
+    (0, energy_1.gatherEnergy)(creep, data, hasSourceContainers ? 200 : 50);
 }
 /**
  * Pick up nearby dropped energy, tombstones, or ruins within range 5 of `pos`.

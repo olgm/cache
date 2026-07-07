@@ -16,8 +16,18 @@ exports.gatherEnergy = gatherEnergy;
 const movement_1 = require("./movement");
 const expansion_1 = require("../expansion");
 const MIN_PICKUP = 50;
-/** True if the creep issued a gather action (move/withdraw/pickup/harvest). */
-function gatherEnergy(creep, data) {
+/**
+ * Gather energy from the best available source.
+ *
+ * @param creep        The creep that needs energy.
+ * @param data         Per-tick cached room snapshot.
+ * @param minSpawnDrain Minimum energy a spawn/extension must hold before step 6
+ *                      will withdraw from it (default 50).  Callers that have a
+ *                      dedicated supply (e.g. upgraders with a controller
+ *                      container) pass a higher value to avoid draining the
+ *                      spawn and stalling creep production.
+ */
+function gatherEnergy(creep, data, minSpawnDrain = 50) {
     // 1. Dropped energy — cheapest, and it would otherwise decay.
     const dropped = creep.pos.findClosestByRange(FIND_DROPPED_RESOURCES, {
         filter: (r) => r.resourceType === RESOURCE_ENERGY && r.amount >= MIN_PICKUP,
@@ -79,19 +89,20 @@ function gatherEnergy(creep, data) {
     }
     // 6. Bootstrap shared buffer: with no containers/storage yet (steps 3-5 found
     //    nothing), draw from spawn/extensions — but ONLY when the buffer has
-    //    accumulated a meaningful amount (≥ 50 e).  Harvesters refill them at
-    //    ~2-4 e/tick during bootstrap; withdrawing 1-10 e every tick prevents the
-    //    spawn from ever reaching the 200 e needed for a new harvester, which is
-    //    the energy-poverty death spiral (live W43N38: 1 e / 2300 capacity, 2
-    //    harvesters, spawn can never afford a third).  A 50 e threshold matches
-    //    the builder fast-gather path and MIN_PICKUP, and lets the spawn
-    //    accumulate enough to spawn while still giving workers access when there
-    //    is real surplus.  The spawn manager runs BEFORE creep dispatch each tick,
-    //    so spawning always claims its energy first — workers only take what
-    //    spawning left behind.
+    //    accumulated a meaningful amount (≥ minSpawnDrain).  Harvesters refill
+    //    them at ~2-4 e/tick during bootstrap; withdrawing 1-10 e every tick
+    //    prevents the spawn from ever reaching the 200 e needed for a new
+    //    harvester, which is the energy-poverty death spiral.  The default 50 e
+    //    threshold matches the builder fast-gather path and MIN_PICKUP, and lets
+    //    the spawn accumulate enough to spawn while still giving workers access
+    //    when there is real surplus.  Callers with a dedicated supply (upgraders
+    //    with a controller container) pass a higher threshold so the spawn can
+    //    accumulate and break the low-energy equilibrium.  The spawn manager runs
+    //    BEFORE creep dispatch each tick, so spawning always claims its energy
+    //    first — workers only take what spawning left behind.
     const buffer = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
         filter: (s) => (s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION) &&
-            s.store[RESOURCE_ENERGY] >= 50,
+            s.store[RESOURCE_ENERGY] >= minSpawnDrain,
     });
     if (buffer) {
         if (creep.withdraw(buffer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE)

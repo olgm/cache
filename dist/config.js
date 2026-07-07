@@ -65,25 +65,46 @@ function repeat(unit, budget, maxRepeat) {
  * death-spiralled. A cheap miner is one the colony can always replace.
  */
 function minerBody(budget) {
-    // Largest whole-unit miner (≤5 WORK) the budget affords.
-    let bestW = 1;
+    // A stationary miner sits on its container for life — travel happens exactly
+    // once (initial positioning), so MOVE parts are the lowest-value investment.
+    // The old code spent up to 150 e (3 MOVE) on travel that lasts ~20 ticks
+    // while starving WORK that produces energy for 1500 ticks.  At low budgets
+    // (RCL 2-4, no extensions) this produced a 1-WORK / 2 e-tick miner instead
+    // of a 2-WORK / 4 e-tick one — doubling the room's payback time for every
+    // subsequent spawn.
+    //
+    // Strategy: try the full-move body first (clean travel to the container).
+    // If unaffordable, try 2-WORK with 0–1 MOVE — a miner that crawls to its
+    // container at 0.5× speed but produces 2× energy for the rest of its life.
+    // A 0-MOVE 2-WORK miner (250 e) is strictly superior to a 1-MOVE 1-WORK
+    // miner (200 e): +2 e/tick forever vs saving ~10 ticks of initial travel.
+    // Pass 1: standard body with proportional MOVE (1:2 ratio).
     for (let w = 5; w >= 1; w--) {
         const m = Math.min(3, Math.max(1, Math.ceil(w / 2)));
         const cost = w * types_1.BODY_COST.work + types_1.BODY_COST.carry + m * types_1.BODY_COST.move;
         if (cost <= budget) {
-            bestW = w;
-            break;
+            const body = [];
+            for (let i = 0; i < w; i++)
+                body.push(WORK);
+            body.push(CARRY);
+            for (let i = 0; i < m; i++)
+                body.push(MOVE);
+            return body;
         }
     }
-    const body = [];
-    for (let i = 0; i < bestW; i++)
-        body.push(WORK);
-    body.push(CARRY);
-    // MOVE proportional to WORK (1:2 ratio, min 1, max 3 — a miner barely moves).
-    const baseMove = Math.min(3, Math.max(1, Math.ceil(bestW / 2)));
-    for (let i = 0; i < baseMove; i++)
-        body.push(MOVE);
-    return body;
+    // Pass 2: tight-budget fallback — sacrifice MOVE to keep WORK at 2+.
+    // [WORK,WORK,CARRY] = 250 e (0 MOVE, 4 e/tick)
+    // [WORK,WORK,CARRY,MOVE] = 300 e (1 MOVE, 4 e/tick)
+    // [WORK,CARRY] = 150 e (0 MOVE, 2 e/tick — last resort)
+    if (budget >= 300) {
+        return [WORK, WORK, CARRY, MOVE];
+    }
+    if (budget >= 250) {
+        return [WORK, WORK, CARRY];
+    }
+    // Absolute minimum: 1 WORK, 1 CARRY (150 e).  A miner with zero MOVE still
+    // reaches its container — the 0.5× fatigue penalty is paid once.
+    return [WORK, CARRY];
 }
 /** Hauler: CARRY/MOVE at a 2:1 ratio (assumes roads; half-speed when loaded off-road). */
 function haulerBody(budget) {
