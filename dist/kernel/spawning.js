@@ -136,6 +136,15 @@ function runRoom(room, census) {
             bump(reserved, "pioneer");
             continue;
         }
+        // 1.6. Cross-room rescue: when another owned room is dying (stalled for
+        // many ticks with critically few harvesters), send a rescue harvester
+        // BEFORE satisfying this room's economy targets.  A dying room outranks
+        // any economy role — losing one upgrader cycle is negligible compared to
+        // letting a room collapse into the "spawn with < 200 e" deadlock.
+        // Previously at step 4 (after economy + expansion), it was unreachable
+        // because a healthy room always has an economy role under target.
+        if (tryRescueDeadRoom(spawn, room, data, census))
+            continue;
         // 2. Economy roles + remoteHarvester, by priority.
         const role = pickEconomyRole(targets, census, room.name, reserved);
         if (role) {
@@ -164,14 +173,6 @@ function runRoom(room, census) {
             }
             // Don't set stuck here: expansion is a bonus, not a must-spawn.
         }
-        // 4. Cross-room rescue: when another owned room has a dead spawn (stalled
-        //    for many ticks with zero harvesters), use this room's idle spawn to
-        //    create a rescue harvester assigned to the dead room.  The harvester
-        //    travels to its home room, starts mining, and restarts the dead
-        //    spawn's energy flow.  This is the ONLY way out of the "spawn has 0
-        //    energy and cannot self-recover" deadlock (W44N38 at spawnStall 1332).
-        if (tryRescueDeadRoom(spawn, room, data, census))
-            continue;
     }
     // Count consecutive stalled ticks; any successful spawn (or nothing wanted)
     // clears it. Crossing SPAWN_STALL_LIMIT flips on recovery sizing next tick.
@@ -256,19 +257,24 @@ function spawnBootstrappingEmergency(spawn, room, data, targets, census, reserve
     return code === OK;
 }
 /**
- * Cross-room rescue: when a room we own has a dead spawn (stalled for many
- * ticks with zero harvesters, e.g. W44N38 at spawnStall 1332 with 0 energy
- * harvested), use a HEALTHY room's idle spawn to create a rescue harvester
- * assigned to the dead room.
+ * Cross-room rescue: when a room we own has a dying spawn (stalled for many
+ * ticks with critically few harvesters — fewer than 2), use a HEALTHY room's
+ * spawn to create a rescue harvester assigned to the dying room.
+ *
+ * A room with only 1 harvester (W44N38 at spawnStall 277, energyHarvested 2000)
+ * is just as deadlocked as one with 0: the single harvester produces ~2 e/tick,
+ * builders/upgraders drain the spawn at ≥ 50 e via gatherEnergy step 6, and
+ * the spawn can never accumulate the 200 e needed for a replacement when the
+ * harvester dies.  Without rescue, the room spirals toward 0 harvesters — the
+ * exact deadlock this path was built for.
  *
  * The rescue harvester is spawned in the rescuing room but has homeRoom set to
- * the dead room.  It travels there immediately, starts mining from the dead
- * room's sources, and delivers energy to the dead spawn — breaking the "spawn
- * has no energy → can't spawn harvesters → spawn stays empty" deadlock.
+ * the dying room.  It travels there immediately, starts mining from the local
+ * sources, and delivers energy to the dying spawn.
  *
- * Only fires when this room's own economy is satisfied (the spawn was idle
- * after economy + expansion steps) and has enough energy to afford at least a
- * minimal harvester body (250 e).  Rescues at most one dead room per tick.
+ * Fires BEFORE economy roles (step 1.6) so it isn't gated behind a fully-
+ * satisfied home economy.  A dying room outranks any single economy creep in
+ * the healthy room.  Rescues at most one room per tick.
  */
 function tryRescueDeadRoom(spawn, room, data, census) {
     // Don't rescue if this room can barely afford its own creeps.
@@ -281,16 +287,23 @@ function tryRescueDeadRoom(spawn, room, data, census) {
         if (otherData.spawns.length === 0)
             continue; // nothing to rescue
         const stall = other.memory.spawnStall || 0;
-        if (stall < 150)
-            continue; // not dead long enough — avoid false positives
-        // Verify via census (cheap, already built): the dead room has zero harvesters.
+        // Stall ≥ 100 is long enough to indicate a real problem (the normal refill
+        // wait for a capacity-sized body in a healthy room is < 50 ticks).  Lower
+        // than the old 150 to catch energy-poverty rooms before they hit 0 harvesters.
+        if (stall < 100)
+            continue;
+        // A room with fewer than 2 harvesters cannot sustain itself: the single
+        // harvester produces ~2 e/tick, and the spawn can barely accumulate 200 e
+        // for a replacement before the last one dies.  Resetting the stall on > 0
+        // (the old code) masked this half-dead state — the room limped at 1
+        // harvester / 2000 energy per 1k ticks for thousands of ticks (live).
         const otherHarvesters = (0, census_1.roleCount)(census, other.name, "harvester");
-        if (otherHarvesters > 0) {
-            // Harvesters exist — reset the stall counter in case it was stale.
+        if (otherHarvesters >= 2) {
+            // Room has enough harvesters to be self-sustaining — clear any stale stall.
             other.memory.spawnStall = 0;
             continue;
         }
-        // Spawn a minimal harvester for the dead room.  Size to energy on hand so
+        // Spawn a minimal harvester for the dying room.  Size to energy on hand so
         // the rescue never stalls on budget — a small harvester that arrives NOW
         // is infinitely better than a fat one that waits for capacity.
         const body = (0, config_1.bodyForRole)("harvester", data.energyAvailable, data.rcl);
