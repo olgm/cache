@@ -8,6 +8,15 @@
  * haulers take over and the harvester target count drops to zero, so these
  * generalists naturally age out. Falls back to upgrading if every sink is full,
  * so harvested energy is never wasted.
+ *
+ * STATIC-MINING IDLE GUARD: when the harvester's assigned source has both a
+ * container AND a dedicated miner, the harvester can never win the harvest race
+ * — the miner drains the source's full 10 e/tick regeneration every tick, so
+ * the harvester would call harvest() → ERR_NOT_ENOUGH_ENERGY → wait → repeat,
+ * burning CPU for zero gain.  Instead, the harvester skips mining entirely and
+ * simply waits — O(1) CPU vs the harvest()+movement path.  When the target
+ * count is 0 (normal post-bootstrap), these harvesters are not replaced and
+ * naturally age out after ~1500 ticks.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runHarvester = runHarvester;
@@ -24,10 +33,33 @@ function runHarvester(creep) {
     else if (creep.store[RESOURCE_ENERGY] === 0)
         creep.memory.working = false;
     const data = (0, roomData_1.getRoomData)(creep.room);
+    // Static-mining idle guard: when a miner owns this source the harvester will
+    // never find energy — skip the harvest()+travel() path and just wait.
+    // The harvester still delivers any energy it happens to be carrying.
+    if (!creep.memory.working && sourceHasMiner(creep, data)) {
+        return;
+    }
     if (creep.memory.working)
         deliver(creep, data);
     else
         harvest(creep, data);
+}
+/** True when the source this harvester is assigned to has both a container
+ *  AND a dedicated miner — i.e. the harvester can never win a harvest race. */
+function sourceHasMiner(creep, data) {
+    if (!creep.memory.sourceId)
+        return false;
+    const sd = data.sources.find((s) => s.source.id === creep.memory.sourceId);
+    if (!sd || !sd.container)
+        return false;
+    // Check if any miner is assigned to this source.
+    for (const name in Game.creeps) {
+        const c = Game.creeps[name];
+        if (c.memory.role === "miner" && c.memory.sourceId === creep.memory.sourceId) {
+            return true;
+        }
+    }
+    return false;
 }
 /**
  * Mine the harvester's assigned source.
