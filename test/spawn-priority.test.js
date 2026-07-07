@@ -74,20 +74,31 @@ test("pickEconomyRole starvation-guard: builder beats hauler when zero builders 
   assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "builder");
 });
 
-test("pickEconomyRole hauler fills before builder when builders already exist and catch-up is inactive", () => {
-  // Builder catch-up guard only fires when builderCount ≤ ceil(target/3).
-  // With builderTarget=3, catch-up fires at count ≤ 1.  At count=2 it is
-  // inactive, so hauler (priority 2) beats builder (storage-emergency 1.5).
+test("pickEconomyRole hauler fills before builder when builders are AT target (catch-up inactive)", () => {
+  // Catch-up deactivates only when builderCount reaches builderTarget.
+  // At count=3 (target=3) builders are satisfied, so hauler (priority 2)
+  // fills before any discretionary role.
   const targets = { harvester: 2, miner: 1, hauler: 6, upgrader: 6, builder: 3 };
-  const census = censusFor("W43N38", { harvester: 2, miner: 1, hauler: 4, builder: 2 });
+  const census = censusFor("W43N38", { harvester: 2, miner: 1, hauler: 4, builder: 3 });
   assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "hauler");
 });
 
+test("pickEconomyRole builder catch-up stays active until target is met (not just ⅓)", () => {
+  // With builderTarget=3 and builderCount=2, the old ceil(target/3)=1
+  // threshold would deactivate catch-up and drop builder to priority 1.5,
+  // where a perpetually-under-target hauler at 2 wins every cycle and the
+  // builder corps never reaches the full 3.  The new threshold keeps catch-up
+  // active until count == target, so builder at -0.5 beats hauler at 2.
+  const targets = { harvester: 2, miner: 1, hauler: 6, upgrader: 6, builder: 3 };
+  const census = censusFor("W43N38", { harvester: 2, miner: 1, hauler: 4, builder: 2 });
+  assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "builder");
+});
+
 test("pickEconomyRole builder catch-up: critically-short builder beats harvester replacement", () => {
-  // When builders are at ≤ ⅓ of target (target ≥ 3), the catch-up guard
-  // elevates builder to -0.5 — above even harvester replacement.  This lets
-  // the builder corps escape the 1-builder trap where harvester churn
-  // consumes every spawn cycle and construction stalls forever.
+  // When builders are below target (target ≥ 3), the catch-up guard elevates
+  // builder to -0.5 — above even harvester replacement.  The guard stays
+  // active until the full target is met, guaranteeing the builder corps
+  // reaches full strength instead of oscillating at 1-2 builders forever.
   const targets = { harvester: 2, miner: 1, hauler: 7, builder: 3 };
   const census = censusFor("W43N38", { harvester: 1, miner: 1, hauler: 6 });
   assert.equal(pickEconomyRole(targets, census, "W43N38", {}), "builder");

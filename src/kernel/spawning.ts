@@ -449,8 +449,14 @@ export function pickEconomyRole(
   // deactivates once the count reaches ⅓ of target (typically 2 builders for
   // a target of 5).  In normal post-bootstrap operation builders don't need
   // this extreme elevation; the storage-emergency guard at 1.5 suffices.
+  // Catch-up fires from 0 builders up to (but not including) the full target.
+  // The old ceil(target/3) threshold deactivated at 2 builders for a target of 3,
+  // leaving the last builder to compete at storage-emergency priority 1.5 — which
+  // loses to any other under-target role and can never close the gap.  Keeping the
+  // guard active until target is met guarantees the builder corps reaches its full
+  // strength in one uninterrupted burst, roughly tripling construction throughput.
   const builderCatchUp =
-    builderTarget >= 3 && builderCount <= Math.ceil(builderTarget / 3);
+    builderTarget >= 3 && builderCount < builderTarget;
 
   roles.sort((a, b) => {
     let pa = ROLE_PRIORITY[a];
