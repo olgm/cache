@@ -129,7 +129,18 @@ function runBuilder(creep) {
                 return;
             }
         }
-        (0, energy_1.gatherEnergy)(creep, data);
+        // SPAWN-DRAIN GUARD: when source containers exist (static mining active),
+        // the builder must not withdraw from spawn/extensions.  Source containers
+        // are the correct energy supply; draining the spawn starves creep
+        // production and locks the room in a low-energy equilibrium where the
+        // spawn can never accumulate enough to spawn a second builder (the live
+        // W44N38: spawn at 66 e, 12 construction sites, builder drains spawn →
+        // spawn stays at 66 forever).  Passing minSpawnDrain=200 effectively
+        // disables step 6 for post-bootstrap rooms — the builder walks to source
+        // containers or harvests directly, which is less efficient but does not
+        // sabotage the colony's spawning.  Mirrors the upgrader guard from Cycle 17.
+        const hasSourceContainers = data.sources.some((s) => s.container);
+        (0, energy_1.gatherEnergy)(creep, data, hasSourceContainers ? 200 : 50);
         return;
     }
     // ---- Spawn-refill emergency ----
