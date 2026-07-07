@@ -164,7 +164,10 @@ export interface CacheStats {
       rclProgressTotal: number;
       energy: number;
       energyCapacity: number;
+      /** 1 if a storage structure exists in the room, else 0 (presence flag). */
       storage: number;
+      /** Energy buffered in storage; 0 when storage is absent OR built-but-empty. */
+      storageEnergy: number;
       hostiles: number;
       myCreeps: number;
       income1k: number;

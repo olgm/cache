@@ -76,7 +76,15 @@ export function writeStats(): void {
       rclProgressTotal: ctrl.progressTotal || 0,
       energy: room.energyAvailable,
       energyCapacity: room.energyCapacityAvailable,
-      storage: room.storage ? room.storage.store[RESOURCE_ENERGY] : 0,
+      // PRESENCE flag (0/1), NOT energy. SPARSE reads `storage` as a built-
+      // structure flag (capabilities.ts counts "rooms with storage"; diagnosis
+      // and the Overseer treat 0 as "no storage structure"). A built-but-EMPTY
+      // storage must still read 1 — reporting its 0 energy here made an empty
+      // buffer look like a missing structure, so the Overseer kept trying to
+      // BUILD a storage that already existed (the storage-never-placed misread).
+      // The buffer LEVEL is reported separately as `storageEnergy`.
+      storage: room.storage ? 1 : 0,
+      storageEnergy: room.storage ? room.storage.store[RESOURCE_ENERGY] : 0,
       hostiles: data.allHostiles.length,
       myCreeps: creepsByRoom[name] || 0,
       income1k: roomIncome1k(data.sources.length, harvestWorkByRoom[name] || 0),
