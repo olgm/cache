@@ -134,6 +134,8 @@ export interface CacheStats {
         storageEnergy: number;
         hostiles: number;
         myCreeps: number;
+        /** Per-role creep counts in this room (e.g. { miner: 1, hauler: 3 }). */
+        creepsByRole: Record<string, number>;
         income1k: number;
         sites: number;
         extensions: number;

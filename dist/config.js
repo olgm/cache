@@ -547,6 +547,20 @@ function roleTargets(data, current) {
     else {
         targets.builder = 0;
     }
+    // Bootstrap builder floor: when a room has no source containers, construction
+    // throughput is THE bottleneck for escaping bootstrap.  A source container
+    // costs 5 000 energy; with 1 builder spending half its ticks walking to gather,
+    // it takes over 3 000 ticks — locking the room at harvesters (~6 e/tick) vs
+    // the ~10 e/tick a single miner would produce.  Two builders halve the escape
+    // time, and the spawn can afford both (builders are small, ~200-300 e each).
+    // At RCL 4+ with no storage the combined emergency below raises the floor
+    // further; this guard ensures even RCL 2-3 rooms get at least 2 builders so
+    // the first source container completes in a reasonable timeframe.
+    // Capped at sourceCount ≤ 2 so the floor doesn't over-commit in a theoretical
+    // 3-source room (not possible in standard Screeps but safe).
+    if (withContainer === 0 && sourceCount <= 2) {
+        targets.builder = Math.max(targets.builder || 0, 2);
+    }
     // Storage emergency: when a room at RCL 4+ has no storage, the builder target
     // floor is raised to ensure construction progresses.  Without this, the
     // builder target is site-count-gated (sites / 5), and a room with few sites

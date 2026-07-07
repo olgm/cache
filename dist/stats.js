@@ -41,6 +41,10 @@ function roomIncome1k(sourceCount, harvestWork) {
 function writeStats() {
     const creepsByRole = {};
     const creepsByRoom = {};
+    // Per-room per-role breakdown — lets the Overseer diagnose which room is
+    // short on miners, builders, etc. without a separate memory read.  Costs
+    // near-zero CPU: we already iterate all creeps for creepsByRole.
+    const creepsByRoomRole = {};
     // WORK parts of harvesting creeps per room — deployed mining capacity.
     const harvestWorkByRoom = {};
     for (const name in Game.creeps) {
@@ -48,6 +52,8 @@ function writeStats() {
         const role = c.memory.role || "unknown";
         creepsByRole[role] = (creepsByRole[role] || 0) + 1;
         creepsByRoom[c.room.name] = (creepsByRoom[c.room.name] || 0) + 1;
+        const rr = creepsByRoomRole[c.room.name] || (creepsByRoomRole[c.room.name] = {});
+        rr[role] = (rr[role] || 0) + 1;
         // Energy producers: dedicated miners and generalist harvesters. Their WORK
         // parts (capped at the source regen rate) are the room's mining capacity.
         if (role === "miner" || role === "harvester") {
@@ -87,6 +93,7 @@ function writeStats() {
             storageEnergy: room.storage ? room.storage.store[RESOURCE_ENERGY] : 0,
             hostiles: data.allHostiles.length,
             myCreeps: creepsByRoom[name] || 0,
+            creepsByRole: creepsByRoomRole[name] || {},
             income1k: roomIncome1k(data.sources.length, harvestWorkByRoom[name] || 0),
             sites: data.constructionSites.length,
             extensions: data.extensions.length,
