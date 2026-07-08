@@ -209,6 +209,15 @@ function pickSite(creep) {
     // instead unlocks static mining and a steady energy stream. Once any container
     // exists, fall back to the normal economy-first order (extensions compound).
     const bootstrapping = data.sources.every((s) => !s.container);
+    // PARTIAL BOOTSTRAP: some sources have containers but others don't.  Each
+    // uncovered source is the room's single biggest economic lever — a dedicated
+    // miner on a containerized source produces 10 e/tick vs the ~4 e/tick from
+    // two harvesters on the same source, a 150 % income boost per source.  The
+    // second source container must be built BEFORE the controller container,
+    // roads, and everything else, because it raises total room income by 40-50 %
+    // and that surplus funds every other structure.  Elevate its priority to the
+    // same level as full bootstrap (0.5).
+    const partialBootstrap = !bootstrapping && data.sources.some((s) => !s.container);
     // After bootstrap, the controller container is the next critical unlock: it
     // gives upgraders a dedicated supply beside the controller, roughly doubling
     // their uptime and the colony's control-point throughput.  Bump its priority
@@ -220,8 +229,12 @@ function pickSite(creep) {
     let bestKey = Infinity;
     for (const s of sites) {
         let prio = (_a = BUILD_PRIORITY[s.structureType]) !== null && _a !== void 0 ? _a : 9;
-        if (bootstrapping && s.structureType === STRUCTURE_CONTAINER) {
-            prio = 0.5; // before extensions
+        // A container site for a source that still lacks one — during full or
+        // partial bootstrap, this is the highest economic priority (0.5).
+        const isSourceContainerSite = s.structureType === STRUCTURE_CONTAINER &&
+            data.sources.some((sd) => !sd.container && s.pos.inRangeTo(sd.source.pos, 1));
+        if ((bootstrapping || partialBootstrap) && isSourceContainerSite) {
+            prio = 0.5; // before extensions, before controller container, before storage
         }
         else if (s.structureType === STRUCTURE_STORAGE) {
             prio = 0.6; // after source containers, before controller container
