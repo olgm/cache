@@ -36,7 +36,37 @@ export function runHarvester(creep: Creep): void {
   // Static-mining idle guard: when a miner owns this source the harvester will
   // never find energy — skip the harvest()+travel() path and just wait.
   // The harvester still delivers any energy it happens to be carrying.
+  //
+  // PARTIAL-BOOTSTRAP RE-ASSIGN: during the transition from bootstrap to static
+  // mining (some sources containerized, some not), a harvester assigned to a
+  // covered source is dead weight — it idles every tick while an uncovered
+  // source elsewhere in the room goes under-harvested.  Instead of idling,
+  // re-assign to an uncovered source so all harvester WORK parts stay busy.
+  // In full post-bootstrap (all sources containerized, target=0), the guard
+  // still idles harvesters so they age out naturally — those harvesters are
+  // surplus and should not be reassigned.  We detect "still needed" by checking
+  // whether any source in the room lacks a container: if so, the room still
+  // benefits from harvester labour.
+  //
+  // CRITICAL: we bypass the normal harvest() path (which calls pickHarvesterSource
+  // when the source is depleted — and pickHarvesterSource would re-assign the
+  // harvester RIGHT BACK to the covered source, creating a per-tick oscillation
+  // where the harvester never actually harvests).  Instead we directly target the
+  // uncovered source: harvest from it if in range, travel toward it if not, and
+  // wait beside it when it is depleted (harvest returns ERR_NOT_ENOUGH_ENERGY,
+  // which is silently fine — next tick it will have regenerated).
   if (!creep.memory.working && sourceHasMiner(creep, data)) {
+    const stillNeeded = data.sources.some((s) => !s.container);
+    if (stillNeeded) {
+      const uncovered = data.sources.find((s) => !s.container);
+      if (uncovered) {
+        creep.memory.sourceId = uncovered.source.id;
+        if (creep.harvest(uncovered.source) === ERR_NOT_IN_RANGE) {
+          travel(creep, uncovered.source);
+        }
+        return;
+      }
+    }
     return;
   }
 
