@@ -17,7 +17,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { ROLE_PRIORITY } = require("../dist/config.js");
-const { pickEconomyRole, economyBudget } = require("../dist/kernel/spawning.js");
+const { pickEconomyRole, economyBudget, minerProductionFloor } = require("../dist/kernel/spawning.js");
 
 /** Minimal Census stub — pickEconomyRole only reads census.byRoom[home]. */
 function censusFor(home, counts) {
@@ -155,4 +155,25 @@ test("economyBudget sizes to available during bootstrap (no source container)", 
 test("economyBudget floors at a minimal body when nearly empty", () => {
   const data = { sources: noContainers, energyAvailable: 40, energyCapacity: 1800 };
   assert.equal(economyBudget(data, 0, false), 200); // WORK+CARRY+MOVE floor
+});
+
+// ---- minerProductionFloor: don't lock in a runt miner (manual rescue 2026-07-08)
+// A runt miner (1-3 WORK, from available-sizing during a stall) permanently caps a
+// source's income. In an extension-rich room with another producer alive, floor the
+// miner at 450e (4 WORK) and wait; elsewhere return 0 so the spawn never deadlocks.
+
+test("minerProductionFloor floors an extension-rich room with a live producer at 450e (>= 4 WORK)", () => {
+  assert.equal(minerProductionFloor(2300, 2), 450);
+  assert.equal(minerProductionFloor(550, 1), 450); // exact boundary: capacity for a 4-WORK miner
+});
+
+test("minerProductionFloor returns 0 for a low-capacity/bootstrap room (available-sizing, no deadlock)", () => {
+  assert.equal(minerProductionFloor(300, 2), 0); // W44N38: capacity 300, cannot afford 450
+  assert.equal(minerProductionFloor(549, 5), 0); // just below the 4-WORK threshold
+});
+
+test("minerProductionFloor returns 0 when no other producer is alive (never block the sole lifeline)", () => {
+  // With zero other producers, waiting for a proper miner could deadlock — size to
+  // available instead (the emergency-harvester path covers a true 0-producer room).
+  assert.equal(minerProductionFloor(2300, 0), 0);
 });

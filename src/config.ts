@@ -583,6 +583,40 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
     // Even with perfect efficiency, more than 6 upgraders means each gets < 3.3
     // energy/tick — they'd spend more ticks walking than upgrading.
     targets.upgrader = Math.min(upg, 6);
+
+    // POVERTY-TRAP HARD CAP (manual rescue 2026-07-08 — the cycle 8-20 firefight).
+    // Every soft guard above (mute-GCL-push, storageMissing→3) still permits 3-4
+    // upgraders in a room with no real energy infrastructure — and that surplus of
+    // upgraders is exactly what sustains the death spiral: they out-consume weak
+    // production, so the spawn never fills enough to build the extensions that
+    // raise capacity or the second miner that raises production, so the trap is
+    // self-perpetuating (W44N38 sat at RCL3 / 0 extensions / 12 sites for cycles).
+    //
+    // When the room demonstrably has ZERO surplus we HARD-cap upgraders to 1 so
+    // energy is redirected to builders (build the extensions) and miners (raise
+    // production). Two orthogonal zero-surplus signals, each self-lifting:
+    //   • noExtensions — a room with 0 extensions has capacity 300; it can only
+    //     spawn tiny creeps and cannot feed an upgrader corps. Lifts the instant
+    //     the first extension is built (capacity climbs, the room is escaping).
+    //   • drainedStorage — a BUILT storage sitting near-empty (<1000e) WHILE the
+    //     spawn buffer is <50% full is a colony consuming energy as fast as it is
+    //     produced (live W43N38: storage 0e, spawn 115/2300). Lifts once storage
+    //     rebuilds a buffer or the spawn refills, i.e. once real surplus returns.
+    // Applied LAST so no earlier Math.max / GCL push can undo it. Capped to 1 (not
+    // 0) to keep the controller ticking so the room never downgrades.
+    const noExtensions = data.extensions.length === 0;
+    const povertyStores = [...data.spawns, ...data.extensions];
+    const povertyCap = povertyStores.reduce(
+      (s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!,
+      0,
+    );
+    const povertyE = povertyStores.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
+    const povertySpawnFill = povertyCap > 0 ? povertyE / povertyCap : 0;
+    const drainedStorage =
+      !!storage && storage.store[RESOURCE_ENERGY] < 1000 && povertySpawnFill < 0.5;
+    if (noExtensions || drainedStorage) {
+      targets.upgrader = Math.min(targets.upgrader ?? 1, 1);
+    }
   }
 
   // --- Builders: scale with construction load. ---
@@ -605,6 +639,18 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
   // Capped at sourceCount ≤ 2 so the floor doesn't over-commit in a theoretical
   // 3-source room (not possible in standard Screeps but safe).
   if (withContainer === 0 && sourceCount <= 2) {
+    targets.builder = Math.max(targets.builder || 0, 2);
+  }
+
+  // No-extensions builder floor (manual rescue 2026-07-08): a post-bootstrap room
+  // stuck at 0 extensions (W44N38 — it built a source container but never got past
+  // the poverty trap to build extensions) needs a guaranteed builder corps to turn
+  // the freed energy — see the upgrader hard cap above — into actual extensions.
+  // Without this, the site-count formula can drop the target to 1 once the backlog
+  // shrinks below ~5 sites, stalling the escape. Two builders (small, ~200-300e
+  // each, both affordable) roughly halve the time to the first extension, after
+  // which capacity climbs and the room self-sustains. Lifts once extensions exist.
+  if (constructionSites.length > 0 && data.extensions.length === 0) {
     targets.builder = Math.max(targets.builder || 0, 2);
   }
 

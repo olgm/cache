@@ -80,3 +80,25 @@ export declare function pickEconomyRole(targets: RoleTargets, census: Census, ho
  * which restarts energy flow and recovers (mirrors the emergency-bootstrap path).
  */
 export declare function economyBudget(data: RoomData, haulers: number, recovering: boolean): number;
+/**
+ * Minimum spawn-energy budget for a MINER, or 0 for "no floor" (normal sizing).
+ *
+ * A miner is the room's income engine, so a RUNT miner — 1-3 WORK, produced when
+ * a stalled or collapsed spawn sizes the body to energy on hand — permanently
+ * caps that source's output and can lock the colony in a low-production
+ * equilibrium (live W43N38: income halved after dedicated miners fell 2→1 and the
+ * drained spawn kept replacing them undersized). When the room can CLEARLY afford
+ * a real miner — capacity ≥ 550 (≈5+ extensions, enough to hold the ~450e of a
+ * 4-WORK miner) AND at least one other energy producer is alive — we floor the
+ * miner budget at 450e so it is never spawned below 4 WORK; the caller then WAITS
+ * for that body instead of runt-sizing to available energy.
+ *
+ * The "≥1 other producer" guard is what makes the wait deadlock-safe: the other
+ * producer keeps refilling the spawn toward 450e, and a genuine 0-producer
+ * collapse is already caught earlier by the emergency-harvester path (which sizes
+ * to energy on hand). Bootstrap, sole-producer, and low-capacity rooms return 0
+ * and keep available-sizing, so the spawn can always fund SOME miner.
+ *
+ * Pure + exported for unit testing.
+ */
+export declare function minerProductionFloor(energyCapacity: number, otherProducers: number): number;

@@ -15,6 +15,7 @@ exports.recordSpawnResult = recordSpawnResult;
 exports.runSpawnManager = runSpawnManager;
 exports.pickEconomyRole = pickEconomyRole;
 exports.economyBudget = economyBudget;
+exports.minerProductionFloor = minerProductionFloor;
 const types_1 = require("../types");
 const config_1 = require("../config");
 const census_1 = require("../utils/census");
@@ -534,6 +535,30 @@ function economyBudget(data, haulers, recovering) {
     }
     return data.energyCapacity;
 }
+/**
+ * Minimum spawn-energy budget for a MINER, or 0 for "no floor" (normal sizing).
+ *
+ * A miner is the room's income engine, so a RUNT miner — 1-3 WORK, produced when
+ * a stalled or collapsed spawn sizes the body to energy on hand — permanently
+ * caps that source's output and can lock the colony in a low-production
+ * equilibrium (live W43N38: income halved after dedicated miners fell 2→1 and the
+ * drained spawn kept replacing them undersized). When the room can CLEARLY afford
+ * a real miner — capacity ≥ 550 (≈5+ extensions, enough to hold the ~450e of a
+ * 4-WORK miner) AND at least one other energy producer is alive — we floor the
+ * miner budget at 450e so it is never spawned below 4 WORK; the caller then WAITS
+ * for that body instead of runt-sizing to available energy.
+ *
+ * The "≥1 other producer" guard is what makes the wait deadlock-safe: the other
+ * producer keeps refilling the spawn toward 450e, and a genuine 0-producer
+ * collapse is already caught earlier by the emergency-harvester path (which sizes
+ * to energy on hand). Bootstrap, sole-producer, and low-capacity rooms return 0
+ * and keep available-sizing, so the spawn can always fund SOME miner.
+ *
+ * Pure + exported for unit testing.
+ */
+function minerProductionFloor(energyCapacity, otherProducers) {
+    return energyCapacity >= 550 && otherProducers >= 1 ? 450 : 0;
+}
 function trySpawnRole(spawn, room, data, role, census, reserved, reservedSources, recovering) {
     // Size the body to what the colony can actually fund right now (see
     // economyBudget): capacity-sized in normal operation, but sized to energy on
@@ -549,7 +574,22 @@ function trySpawnRole(spawn, room, data, role, census, reserved, reservedSources
     const haulers = (0, census_1.roleCount)(census, room.name, "hauler") + (reserved.hauler || 0);
     const budget = economyBudget(data, haulers, recovering);
     let body = (0, config_1.bodyForRole)(role, budget, data.rcl);
-    if (data.energyAvailable < bodyCost(body)) {
+    // Miner production floor: never lock in a runt miner in a room that can afford
+    // a real one (see minerProductionFloor). Producers already alive/reserved keep
+    // refilling the spawn while we wait, so the wait cannot deadlock.
+    const minerFloor = role === "miner"
+        ? minerProductionFloor(data.energyCapacity, (0, census_1.roleCount)(census, room.name, "miner") +
+            (0, census_1.roleCount)(census, room.name, "harvester") +
+            (reserved.miner || 0) +
+            (reserved.harvester || 0))
+        : 0;
+    if (minerFloor > 0) {
+        // Size to at least the floor and WAIT for it rather than runt-sizing down.
+        body = (0, config_1.bodyForRole)("miner", Math.min(data.energyCapacity, Math.max(budget, minerFloor)), data.rcl);
+        if (data.energyAvailable < bodyCost(body))
+            return false; // wait for a proper miner
+    }
+    else if (data.energyAvailable < bodyCost(body)) {
         // Fall back to an available-energy body: a smaller creep NOW is infinitely
         // better than an idle spawn waiting for capacity it may never reach.
         body = (0, config_1.bodyForRole)(role, data.energyAvailable, data.rcl);

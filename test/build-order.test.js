@@ -126,6 +126,88 @@ test("upgrader push is unrestricted once a storage structure exists to buffer th
   assert.ok(t.upgrader >= 5, `expected >= 5 once storage buffers the surplus, got ${t.upgrader}`);
 });
 
+// ---- (d) poverty-trap hard cap (manual rescue 2026-07-08) --------------------
+// The cycle 8-20 firefight could not break W44N38's death spiral because the soft
+// guards still permitted 3-4 upgraders in a room with no energy infrastructure.
+// The hard cap clamps upgraders to 1 when the room demonstrably has zero surplus
+// (0 extensions, OR a drained storage with a near-empty spawn) so energy routes to
+// builders + miners. These pin that behavior and its self-lifting negative cases.
+
+// W44N38-like: RCL3, one source container (post-bootstrap), 0 extensions, 12 sites.
+function povertyRoomNoExtensions(over = {}) {
+  return {
+    rcl: 3,
+    sources: [
+      { container: { store: fakeStore(1000, 2000) }, openSlots: 3, source: { pos: {} } },
+      { container: undefined, openSlots: 3, source: { pos: {} } },
+    ],
+    storage: undefined,
+    controllerContainer: undefined,
+    constructionSites: Array.from({ length: 12 }, () => ({})),
+    hostiles: [],
+    towers: [],
+    spawns: [{ store: fakeStore(180, 300) }], // 60% full — high enough to defeat the OLD soft guard
+    extensions: [], // the trap: capacity is 300, no extensions ever get built
+    ...over,
+  };
+}
+
+test("upgraders are HARD-capped to 1 in a post-bootstrap room with 0 extensions (W44N38 trap)", () => {
+  const t = roleTargets(povertyRoomNoExtensions(), {});
+  assert.ok(t.upgrader <= 1, `expected <= 1 upgrader with 0 extensions, got ${t.upgrader}`);
+});
+
+test("a 0-extension room with sites keeps a builder floor of >= 2 (turn freed energy into extensions)", () => {
+  const t = roleTargets(povertyRoomNoExtensions(), {});
+  assert.ok(t.builder >= 2, `expected >= 2 builders to build the first extensions, got ${t.builder}`);
+});
+
+test("the cap lifts the instant the first extension exists (self-lifting escape)", () => {
+  // One extension built → capacity climbs, room is escaping → upgraders resume.
+  const t = roleTargets(
+    povertyRoomNoExtensions({ extensions: [{ store: fakeStore(50, 50) }] }),
+    {},
+  );
+  assert.ok(t.upgrader >= 2, `expected upgraders to resume once an extension exists, got ${t.upgrader}`);
+});
+
+// W43N38-like: RCL6, both sources mined, storage BUILT but drained to 0, spawn near-empty.
+function drainedStorageRoom(over = {}) {
+  return {
+    rcl: 6,
+    sources: [
+      { container: { store: fakeStore(1500, 2000) }, openSlots: 3, source: { pos: {} } },
+      { container: { store: fakeStore(1500, 2000) }, openSlots: 3, source: { pos: {} } },
+    ],
+    storage: { store: fakeStore(0, 1000000) }, // built, but drained
+    controllerContainer: undefined,
+    constructionSites: [{}, {}],
+    hostiles: [],
+    towers: [],
+    spawns: [{ store: fakeStore(50, 300) }],
+    extensions: Array.from({ length: 40 }, () => ({ store: fakeStore(0, 50) })), // drained → spawnFill ~2%
+    ...over,
+  };
+}
+
+test("upgraders are HARD-capped to 1 when a built storage is drained AND the spawn is near-empty (W43N38 trap)", () => {
+  const t = roleTargets(drainedStorageRoom(), {});
+  assert.ok(t.upgrader <= 1, `expected <= 1 upgrader with drained storage + empty spawn, got ${t.upgrader}`);
+});
+
+test("a drained storage does NOT cap upgraders while the spawn buffer is healthy (no over-throttle on a normal dip)", () => {
+  // Storage momentarily at 0 but spawn+extensions full: real surplus is flowing,
+  // so this is a normal spend dip, not the poverty trap — upgraders must NOT clamp.
+  const t = roleTargets(
+    drainedStorageRoom({
+      spawns: [{ store: fakeStore(300, 300) }],
+      extensions: Array.from({ length: 40 }, () => ({ store: fakeStore(50, 50) })),
+    }),
+    {},
+  );
+  assert.ok(t.upgrader >= 2, `expected upgraders NOT clamped when the spawn is full, got ${t.upgrader}`);
+});
+
 // ---- miner body is regen-capped (no more 1800e miners) -----------------------
 test("minerBody caps WORK at the source regen limit (<= 5)", () => {
   const work = minerBody(1800).filter((p) => p === "work").length;
