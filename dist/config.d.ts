@@ -23,7 +23,16 @@ import { RoomData } from "./utils/roomData";
 export declare function minerBody(budget: number): BodyPartConstant[];
 /** Hauler: CARRY/MOVE at a 2:1 ratio (assumes roads; half-speed when loaded off-road). */
 export declare function haulerBody(budget: number): BodyPartConstant[];
-/** Generalist worker (builder): balanced, budget-filling. */
+/** Generalist worker (builder): balanced, budget-filling.
+ *
+ * LOW-BUDGET FALLBACK: when budget is below the [WORK,CARRY,MOVE] unit cost
+ * (200 e), the standard repeat() would still return that 200 e body via its
+ * Math.max(1, …) floor — a body the spawn cannot afford when it has, say,
+ * 150 e.  The fallback [WORK, CARRY] (150 e, no MOVE) is a slow but functional
+ * builder that can be spawned in energy-poverty deadlocks and lets the room
+ * make construction progress rather than stalling forever.  Once the spawn
+ * accumulates ≥ 200 e the normal unit body resumes.
+ */
 export declare function workerBody(budget: number, maxRepeat: number): BodyPartConstant[];
 /**
  * Harvester body — heavy CARRY for bootstrap efficiency.

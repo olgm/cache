@@ -122,12 +122,21 @@ export function runUpgrader(creep: Creep): void {
     // full PARK_TIMEOUT while spawn buffers sit with spare energy.  The spawn
     // manager runs BEFORE creep dispatch, so spawning always claims its energy
     // first — upgraders only take what spawning left behind.
+    //
+    // SPAWN-DRAIN GUARD: this path bypasses gatherEnergy (and its minSpawnDrain
+    // parameter), so it needs its own absolute energy floor.  Draining the
+    // spawn below 200 e (the minimum creep body) starves creep production and
+    // can create a permanent deadlock: the spawn tries to spawn a builder,
+    // fails, accumulates energy from haulers, and the upgrader drains it back
+    // down before it reaches 200 e (the live W44N38 at 142 e / 300, stall 51).
+    // Requiring ≥ 200 e absolute AND the percentage threshold ensures the
+    // upgrader only taps energy that spawning demonstrably cannot use.
     if (!data.storage) {
       const spawnExt = [...data.spawns, ...data.extensions];
       const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!, 0);
       const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
       const threshold = idleTicks >= PROGRESSIVE_DRAW_TICKS ? 0.20 : 0.35;
-      if (totalCap > 0 && totalE > totalCap * threshold) {
+      if (totalCap > 0 && totalE > totalCap * threshold && totalE >= 200) {
         const src = spawnExt.find((s) => s.store[RESOURCE_ENERGY] > 0);
         if (src) {
           if (creep.withdraw(src, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, src);
@@ -167,11 +176,14 @@ export function runUpgrader(creep: Creep): void {
   // No controller container: use the general energy pool.  The waste-
   // prevention path drains spawn/extensions when they're flooding (>50 %
   // full), which is faster than walking to a source in the bootstrap phase.
+  //
+  // SPAWN-DRAIN GUARD: same 200 e absolute floor as the progressive-drain
+  // path above — prevents drain below the minimum spawnable body.
   if (!data.storage) {
     const spawnExt = [...data.spawns, ...data.extensions];
     const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY)!, 0);
     const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-    if (totalCap > 0 && totalE > totalCap * 0.5) {
+    if (totalCap > 0 && totalE > totalCap * 0.5 && totalE >= 200) {
       const src = spawnExt.find((s) => s.store[RESOURCE_ENERGY] > 0);
       if (src) {
         if (creep.withdraw(src, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) travel(creep, src);

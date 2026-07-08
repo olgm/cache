@@ -113,9 +113,28 @@ function fillWork(body: BodyPartConstant[], leftover: number): BodyPartConstant[
   return body;
 }
 
-/** Generalist worker (builder): balanced, budget-filling. */
+/** Generalist worker (builder): balanced, budget-filling.
+ *
+ * LOW-BUDGET FALLBACK: when budget is below the [WORK,CARRY,MOVE] unit cost
+ * (200 e), the standard repeat() would still return that 200 e body via its
+ * Math.max(1, …) floor — a body the spawn cannot afford when it has, say,
+ * 150 e.  The fallback [WORK, CARRY] (150 e, no MOVE) is a slow but functional
+ * builder that can be spawned in energy-poverty deadlocks and lets the room
+ * make construction progress rather than stalling forever.  Once the spawn
+ * accumulates ≥ 200 e the normal unit body resumes.
+ */
 export function workerBody(budget: number, maxRepeat: number): BodyPartConstant[] {
-  const unitCostV = unitCost([WORK, CARRY, MOVE]);
+  const unitCostV = unitCost([WORK, CARRY, MOVE]); // 200
+  if (budget < unitCostV) {
+    // [WORK, CARRY] = 150 e — minimum functional builder: 1 WORK builds at
+    // 5 progress/tick; 1 CARRY holds 50 e per gather trip.  No MOVE means it
+    // crawls, but a slow builder is infinitely better than zero builders.
+    const fallbackCost = BODY_COST.work + BODY_COST.carry; // 150
+    if (budget >= fallbackCost) return [WORK, CARRY];
+    // Budget is below even the fallback — return it anyway; the caller's
+    // affordability check will reject it, and the stall counter will tick.
+    return [WORK, CARRY];
+  }
   const n = Math.max(1, Math.min(maxRepeat, Math.floor(budget / unitCostV)));
   const body = repeat([WORK, CARRY, MOVE], budget, maxRepeat);
   // Only fill when the BUDGET (not maxRepeat) was the binding constraint, so
