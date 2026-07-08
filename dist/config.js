@@ -475,39 +475,63 @@ function roleTargets(data, current) {
         // base sustainable count — adding more mouths would starve everyone.
         // Without a controller container, we use spawn+extension fill as a proxy
         // (the only buffer the upgraders can draw from).
+        //
+        // POVERTY-TRAP GUARD: when storage exists but is empty AND the spawn buffer
+        // is below 50 % capacity, the colony demonstrably has zero surplus — every
+        // joule is consumed as fast as it's produced.  The GCL push overriding the
+        // base formula (upg=2) with 3-5 upgraders is what CAUSES the zero-surplus
+        // equilibrium: more upgraders → more consumption → spawn can't fill →
+        // capacity-sized miners can't be spawned → production stays low → no surplus.
+        // Muting the push when the buffers are empty lets the base formula apply,
+        // which caps upgraders at 2, creates a surplus, fills the spawn, and lets
+        // the colony spawn capacity-sized creeps that escape the poverty trap.
+        // Once storage accumulates a buffer (≥10 000 e — the energy cost of a
+        // typical capacity-sized miner), the GCL push resumes at full force.
         if (Game.gcl.level === 1 || Game.gcl.level === 2) {
-            let surplusFill;
-            if (cc) {
-                surplusFill = ccEnergy / ccCap;
+            // Check whether the colony has demonstrable surplus: storage with buffer
+            // OR a reasonably full spawn.  If both are empty the colony is in a
+            // poverty trap — the GCL push must not override the conservative base
+            // formula (upg ≤ 2) or it perpetuates the trap.
+            const spawnExt = [...data.spawns, ...data.extensions];
+            const spawnCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY), 0);
+            const spawnE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
+            const spawnFill = spawnCap > 0 ? spawnE / spawnCap : 0;
+            const hasStorageBuffer = storage && storage.store[RESOURCE_ENERGY] >= 10000;
+            const inPovertyTrap = !hasStorageBuffer && spawnFill < 0.5;
+            if (!inPovertyTrap) {
+                let surplusFill;
+                if (cc) {
+                    surplusFill = ccEnergy / ccCap;
+                }
+                else {
+                    surplusFill = spawnFill;
+                }
+                if (Game.gcl.level === 1) {
+                    // GCL 1: every control point gates multi-room expansion — be aggressive.
+                    // Even when the controller container is nearly empty, the colony may be
+                    // converting energy at high throughput (upgraders drain the container as
+                    // fast as haulers fill it).  Use a floor of 5 when ANY surplus exists so
+                    // we never under-convert during the critical GCL 1→2 push.
+                    if (surplusFill >= 0.5)
+                        upg = Math.max(upg, 6);
+                    else if (surplusFill >= 0.2)
+                        upg = Math.max(upg, 5);
+                    else
+                        upg = Math.max(upg, 4);
+                }
+                else {
+                    // GCL 2: one notch less aggressive per band.
+                    if (surplusFill >= 0.5)
+                        upg = Math.max(upg, 5);
+                    else if (surplusFill >= 0.2)
+                        upg = Math.max(upg, 4);
+                    else
+                        upg = Math.max(upg, 3);
+                }
             }
-            else {
-                const spawnExt = [...data.spawns, ...data.extensions];
-                const totalCap = spawnExt.reduce((s, st) => s + st.store.getCapacity(RESOURCE_ENERGY), 0);
-                const totalE = spawnExt.reduce((s, st) => s + st.store[RESOURCE_ENERGY], 0);
-                surplusFill = totalCap > 0 ? totalE / totalCap : 0;
-            }
-            if (Game.gcl.level === 1) {
-                // GCL 1: every control point gates multi-room expansion — be aggressive.
-                // Even when the controller container is nearly empty, the colony may be
-                // converting energy at high throughput (upgraders drain the container as
-                // fast as haulers fill it).  Use a floor of 5 when ANY surplus exists so
-                // we never under-convert during the critical GCL 1→2 push.
-                if (surplusFill >= 0.5)
-                    upg = Math.max(upg, 6);
-                else if (surplusFill >= 0.2)
-                    upg = Math.max(upg, 5);
-                else
-                    upg = Math.max(upg, 4);
-            }
-            else {
-                // GCL 2: one notch less aggressive per band.
-                if (surplusFill >= 0.5)
-                    upg = Math.max(upg, 5);
-                else if (surplusFill >= 0.2)
-                    upg = Math.max(upg, 4);
-                else
-                    upg = Math.max(upg, 3);
-            }
+            // else: poverty trap — base formula stands (upg ≤ 2).  The colony
+            // accumulates a surplus, fills the spawn, spawns capacity-sized creeps,
+            // and eventually fills storage to ≥10 000 e, which lifts the guard.
         }
         // Waste detection: when spawn+extensions are filling up AND there is no
         // storage, harvested energy risks capping out at the buffers — every
