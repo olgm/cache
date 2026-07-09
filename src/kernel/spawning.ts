@@ -128,6 +128,23 @@ function runRoom(room: Room, census: Census): void {
       continue;
     }
 
+    // 1.4. Container-but-no-miner emergency: the room has a source container
+    // (so static mining SHOULD be active) but 0 miners, 0 haulers, and the
+    // spawn is stuck below 150 e — the exact W44N38 deadlock (spawnStall 331,
+    // energy 111/300, 0 miners, 0 haulers, source container sits empty).  The
+    // normal economy path (step 2) tries to spawn a miner at priority 1 but
+    // the minimum [WORK,CARRY] body (150 e) is unaffordable.  Once the spawn
+    // reaches 150 e — which happens quickly now that builders/upgraders idle
+    // in this state — this emergency path spawns a minimal miner immediately,
+    // bypassing the economy priority system entirely so no other role can
+    // consume the spawn cycle.  Fires before the bootstrapping and cross-room
+    // rescue because a room that can't use its OWN containers is more urgent.
+    if (needsMinerEmergency(room.name, data, census, reserved)) {
+      if (spawnMinerEmergency(spawn, room, data)) bump(reserved, "miner");
+      else stuck = true;
+      continue;
+    }
+
     // 1.5. Bootstrapping emergency: a claimed room with zero pioneers is
     // dead in the water — it can never build its first spawn, so the expansion
     // generates ZERO control points and may downgrade.  Spawn a minimal pioneer
@@ -212,6 +229,64 @@ function spawnEmergency(spawn: StructureSpawn, room: Room, data: RoomData): bool
     memory: { role: "harvester", homeRoom: room.name, bootstrap: true },
   });
   recordSpawnResult(room.name, "harvester", code);
+  return code === OK;
+}
+
+/**
+ * True when the room has source containers but 0 miners AND 0 haulers — the
+ * static-mining pipeline is broken (container sits empty, no hauler to move
+ * energy even if it were full).  The spawn must accumulate ≥ 150 e to spawn a
+ * minimal [WORK,CARRY] miner; until then the economy roles just burn spawn
+ * cycles on unaffordable bodies.
+ */
+function needsMinerEmergency(
+  home: string,
+  data: RoomData,
+  census: Census,
+  reserved: Record<string, number>,
+): boolean {
+  // Only fires when source containers EXIST — a room with no containers is
+  // bootstrapping normally and its harvesters handle energy just fine.
+  if (!data.sources.some((s) => s.container)) return false;
+  const miners = roleCount(census, home, "miner") + (reserved.miner || 0);
+  if (miners > 0) return false;
+  const haulers = roleCount(census, home, "hauler") + (reserved.hauler || 0);
+  if (haulers > 0) return false;
+  // The spawn must have enough energy for even the minimal miner body.
+  return data.energyAvailable >= BODY_COST.work + BODY_COST.carry; // 150 e
+}
+
+/**
+ * Spawn a minimal miner (no MOVE — it crawls to the container once, then sits
+ * there for life producing 2 e/tick per WORK) to restart the static-mining
+ * pipeline in a room stuck in the container-but-no-miner deadlock.
+ */
+function spawnMinerEmergency(spawn: StructureSpawn, room: Room, data: RoomData): boolean {
+  // Absolute minimum: [WORK, CARRY] = 150 e.  No MOVE — the miner crawls to
+  // its container (~20 ticks of travel for a ~20-tile distance at 0.5× speed
+  // on roads), then produces energy for its full ~1500-tick lifespan.  The
+  // travel cost is paid once; every WORK part produces 3000 lifetime energy.
+  // A MOVE part would save ~10 ticks of initial travel at the cost of 50 e
+  // that could have been another WORK (worth 3000 lifetime energy) or simply
+  // the difference between spawning NOW vs stalling for another 20+ ticks.
+  const body: BodyPartConstant[] = [WORK, CARRY];
+  if (data.energyAvailable < bodyCost(body)) return false;
+
+  // Find a containerized source with no miner assigned.
+  const taken = new Set<string>();
+  for (const name in Game.creeps) {
+    const c = Game.creeps[name];
+    if (c.memory.role === "miner" && c.memory.sourceId) {
+      taken.add(c.memory.sourceId as string);
+    }
+  }
+  const free = data.sources.find((s) => s.container && !taken.has(s.source.id));
+  if (!free) return false; // shouldn't happen if needsMinerEmergency passed
+
+  const code = spawn.spawnCreep(body, name("miner"), {
+    memory: { role: "miner", homeRoom: room.name, sourceId: free.source.id },
+  });
+  recordSpawnResult(room.name, "miner", code);
   return code === OK;
 }
 
