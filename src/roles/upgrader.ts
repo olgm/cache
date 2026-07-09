@@ -67,6 +67,12 @@ export function runUpgrader(creep: Creep): void {
   // AND 0 haulers, idle to let harvesters push the full source output to the
   // spawn so it can accumulate the 150 e needed to spawn a miner.  (Same
   // deadlock as the builder guard — see builder.ts for the full rationale.)
+  // Updated to OR: the guard stays active after a miner emergency spawn until a
+  // hauler also exists, preventing the upgrader from resuming and competing with
+  // harvesters before the full static-mining pipeline is restored.  But if miners
+  // exist (producing into containers) and there are no harvesters, the upgrader
+  // taking from containers doesn't starve the spawn — the spawn can't get that
+  // energy without haulers anyway.  Only idle when spawn truly has no supply.
   {
     const containers = data.sources.filter((s) => s.container).length;
     if (containers > 0) {
@@ -78,7 +84,34 @@ export function runUpgrader(creep: Creep): void {
         else if (c.memory.role === "hauler") haulers++;
         if (miners > 0 && haulers > 0) break;
       }
-      if (miners === 0 && haulers === 0) return; // idle — let spawn accumulate
+      if (miners === 0 || haulers === 0) {
+        let harvesters = 0;
+        for (const name in Game.creeps) {
+          const c = Game.creeps[name];
+          if (c.memory.homeRoom !== home) continue;
+          if (c.memory.role === "harvester") harvesters++;
+        }
+        if (harvesters === 0) return; // idle — spawn has no energy supply at all
+      }
+    }
+  }
+
+  // SPAWN-ENERGY CRISIS GUARD: when the room has miners (energy IS being
+  // produced) but the spawn+extensions buffer is critically low AND the spawn
+  // is actively stalled, upgraders consuming source-container energy compete
+  // with haulers for the spawn's supply.  Keyed to spawnStall ≥ 10 so it only
+  // fires during a genuine crisis, not a brief post-spawn dip (see builder.ts).
+  {
+    let hasMiners = false;
+    for (const name in Game.creeps) {
+      const c = Game.creeps[name];
+      if (c.memory.homeRoom === home && c.memory.role === "miner") { hasMiners = true; break; }
+    }
+    if (hasMiners) {
+      const totalE = data.spawns.reduce((s, sp) => s + sp.store[RESOURCE_ENERGY], 0) +
+                     data.extensions.reduce((s, ext) => s + ext.store[RESOURCE_ENERGY], 0);
+      const stall = creep.room.memory.spawnStall || 0;
+      if (totalE < 300 && stall >= 10) return; // idle — let haulers fill the spawn
     }
   }
 

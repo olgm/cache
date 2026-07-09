@@ -91,7 +91,8 @@ export function runBuilder(creep: Creep): void {
   // W44N38 deadlock (spawnStall 331, energy 111/300, 0 miners, 0 haulers).
   // Idling lets the harvesters push the full source output to the spawn, which
   // reaches 150 e in ~8 ticks so the spawn manager can spawn a miner and restart
-  // static mining.  The guard lifts the instant a miner exists.
+  // static mining.  The guard lifts once both a miner AND a hauler exist — the
+  // full static-mining pipeline.
   {
     const containers = data.sources.filter((s) => s.container).length;
     if (containers > 0) {
@@ -103,7 +104,52 @@ export function runBuilder(creep: Creep): void {
         else if (c.memory.role === "hauler") haulers++;
         if (miners > 0 && haulers > 0) break;
       }
-      if (miners === 0 && haulers === 0) return; // idle — let spawn accumulate
+      if (miners === 0 || haulers === 0) { // OR: idle while EITHER is missing
+        // But if miners exist (energy IS being produced into containers) and
+        // there are no harvesters (so the spawn depends on the container
+        // pipeline), the builder can take from source containers without
+        // starving the spawn — the spawn isn't getting that energy anyway
+        // without haulers.  Only idle when the spawn truly has no supply:
+        // no harvesters AND (no miners OR no haulers).
+        let harvesters = 0;
+        for (const name in Game.creeps) {
+          const c = Game.creeps[name];
+          if (c.memory.homeRoom !== home) continue;
+          if (c.memory.role === "harvester") harvesters++;
+        }
+        if (harvesters === 0) return; // idle — spawn has no energy supply at all
+      }
+    }
+  }
+
+  // SPAWN-ENERGY CRISIS GUARD: when the room has miners (energy IS being
+  // produced) but the spawn+extensions buffer is critically low AND the spawn
+  // has been actively stalled (trying to spawn but unaffordable), builders
+  // consuming source-container energy compete with haulers for the spawn's
+  // supply.  This is the W43N38 poverty trap: weak miners (3 WORK, ~6 e/tick)
+  // produce into containers, haulers deliver to spawn, but builders withdraw
+  // from the same containers (gatherEnergy step 5) — the spawn receives only
+  // the leftover scraps and can never accumulate enough to spawn a proper
+  // miner.  Idling builders gives the spawn exclusive access to the miners'
+  // output until it accumulates past the threshold.
+  //
+  // KEYED TO spawnStall ≥ 10 so the guard only fires during a GENUINE crisis
+  // (the spawn has been trying and failing to afford a creep for 10+ ticks).
+  // A healthy room dips below 300 e briefly after spawning a large creep, but
+  // its spawnStall stays at 0 because all roles are satisfied — the guard
+  // correctly ignores this transient dip.  Only when the spawn is actively
+  // stuck wanting a creep it cannot afford do we idle builders to help it.
+  {
+    let hasMiners = false;
+    for (const name in Game.creeps) {
+      const c = Game.creeps[name];
+      if (c.memory.homeRoom === home && c.memory.role === "miner") { hasMiners = true; break; }
+    }
+    if (hasMiners) {
+      const totalE = data.spawns.reduce((s, sp) => s + sp.store[RESOURCE_ENERGY], 0) +
+                     data.extensions.reduce((s, ext) => s + ext.store[RESOURCE_ENERGY], 0);
+      const stall = creep.room.memory.spawnStall || 0;
+      if (totalE < 300 && stall >= 10) return; // idle — let haulers fill the spawn
     }
   }
 
