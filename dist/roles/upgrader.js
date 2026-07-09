@@ -57,6 +57,30 @@ function runUpgrader(creep) {
         (0, movement_1.travel)(creep, new RoomPosition(25, 25, home), 20);
         return;
     }
+    const data = (0, roomData_1.getRoomData)(creep.room);
+    // DEGRADED-CONTAINER GUARD: when the room has a source container but 0 miners
+    // AND 0 haulers, idle to let harvesters push the full source output to the
+    // spawn so it can accumulate the 150 e needed to spawn a miner.  (Same
+    // deadlock as the builder guard — see builder.ts for the full rationale.)
+    {
+        const containers = data.sources.filter((s) => s.container).length;
+        if (containers > 0) {
+            let miners = 0, haulers = 0;
+            for (const name in Game.creeps) {
+                const c = Game.creeps[name];
+                if (c.memory.homeRoom !== home)
+                    continue;
+                if (c.memory.role === "miner")
+                    miners++;
+                else if (c.memory.role === "hauler")
+                    haulers++;
+                if (miners > 0 && haulers > 0)
+                    break;
+            }
+            if (miners === 0 && haulers === 0)
+                return; // idle — let spawn accumulate
+        }
+    }
     const ctrl = creep.room.controller;
     if (!ctrl || !ctrl.my)
         return;
@@ -72,7 +96,6 @@ function runUpgrader(creep) {
             (0, movement_1.travel)(creep, ctrl, 3);
         return;
     }
-    const data = (0, roomData_1.getRoomData)(creep.room);
     const cc = data.controllerContainer;
     // Gather: prefer the controller container (adjacent, dedicated).
     if (cc && cc.store[RESOURCE_ENERGY] > 0) {

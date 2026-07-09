@@ -75,6 +75,37 @@ function runBuilder(creep) {
     // pickSite / gatherEnergy free, and we need it both for the storage-emergency
     // fast path and the spawn-refill emergency below.
     const data = (0, roomData_1.getRoomData)(creep.room);
+    // DEGRADED-CONTAINER GUARD: when the room has a source container but 0 miners
+    // AND 0 haulers, the static-mining pipeline is broken — the container sits
+    // empty because no miner fills it, and no hauler exists to move energy even if
+    // it were full.  The builder must IDLE: if it harvests from the source (step 7
+    // of gatherEnergy, since the container is empty and minSpawnDrain=200 blocks
+    // withdraw), it competes with the harvesters for the limited 10 e/tick source
+    // regen.  That competition starves the spawn of energy, and the spawn can
+    // never accumulate the 150 e needed to spawn a [WORK,CARRY] miner — the exact
+    // W44N38 deadlock (spawnStall 331, energy 111/300, 0 miners, 0 haulers).
+    // Idling lets the harvesters push the full source output to the spawn, which
+    // reaches 150 e in ~8 ticks so the spawn manager can spawn a miner and restart
+    // static mining.  The guard lifts the instant a miner exists.
+    {
+        const containers = data.sources.filter((s) => s.container).length;
+        if (containers > 0) {
+            let miners = 0, haulers = 0;
+            for (const name in Game.creeps) {
+                const c = Game.creeps[name];
+                if (c.memory.homeRoom !== home)
+                    continue;
+                if (c.memory.role === "miner")
+                    miners++;
+                else if (c.memory.role === "hauler")
+                    haulers++;
+                if (miners > 0 && haulers > 0)
+                    break;
+            }
+            if (miners === 0 && haulers === 0)
+                return; // idle — let spawn accumulate
+        }
+    }
     // BOOTSTRAP: no source container exists yet.  Without containers, builders
     // must walk to gather energy, and every round-trip burns ~30 ticks.  The old
     // minEnergyToWork=1 meant builders gathered one tick's worth of energy per
