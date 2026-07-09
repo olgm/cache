@@ -648,14 +648,23 @@ function trySpawnRole(spawn, room, data, role, census, reserved, reservedSources
     let body = (0, config_1.bodyForRole)(role, budget, data.rcl);
     // Miner production floor: never lock in a runt miner in a room that can afford
     // a real one (see minerProductionFloor). Producers already alive/reserved keep
-    // refilling the spawn while we wait, so the wait cannot deadlock.
+    // refilling the spawn while we wait, so the wait cannot deadlock in a HEALTHY
+    // room.  BUT when the spawn has been stalled for SPAWN_STALL_LIMIT+ ticks
+    // (recovering=true), the floor is UNREACHABLE — builders drain the spawn at
+    // minSpawnDrain=200 via gatherEnergy step 6, and the spawn oscillates between
+    // ~0-250 e, never reaching the 450 e floor.  Bypassing the floor when
+    // recovering lets the spawn produce whatever miner it can afford NOW, breaking
+    // the deadlock (live W43N38: spawnStall 138, energy 210/2300, 1 miner for 2
+    // containerized sources → second miner never spawns because 450 e floor
+    // unreachable).  A runt miner is better than NO miner; once income rises the
+    // spawn can replace it with a proper body at end-of-life.
     const minerFloor = role === "miner"
         ? minerProductionFloor(data.energyCapacity, (0, census_1.roleCount)(census, room.name, "miner") +
             (0, census_1.roleCount)(census, room.name, "harvester") +
             (reserved.miner || 0) +
             (reserved.harvester || 0))
         : 0;
-    if (minerFloor > 0) {
+    if (minerFloor > 0 && !recovering) {
         // Size to at least the floor and WAIT for it rather than runt-sizing down.
         body = (0, config_1.bodyForRole)("miner", Math.min(data.energyCapacity, Math.max(budget, minerFloor)), data.rcl);
         if (data.energyAvailable < bodyCost(body))
