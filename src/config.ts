@@ -172,9 +172,14 @@ export function workerBody(budget: number, maxRepeat: number): BodyPartConstant[
  * once the economy regains momentum.
  */
 export function harvesterBody(budget: number): BodyPartConstant[] {
-  // Low-budget escape hatch: a [WORK,CARRY,MOVE] minimal harvester (200e) is
-  // infinitely better than an idle spawn waiting for 250e it may never reach.
-  if (budget < 250) return [WORK, CARRY, MOVE];
+  // Low-budget escape hatches: at 150-199 e the spawn cannot afford even the
+  // 200 e [WORK,CARRY,MOVE] body, so we return a bare-minimum [WORK,CARRY]
+  // (150 e, no MOVE — crawls but still mines 2 e/tick).  At 200-249 e the
+  // 200 e body is affordable.  Without the 150 e fallback a room whose spawn
+  // oscillates at 50-150 e (builders/upgraders draining at ≥50 e) can never
+  // spawn a harvester replacement and deadlocks permanently (W44N38 stall 508).
+  if (budget < 200) return [WORK, CARRY];            // 150 e — bare minimum
+  if (budget < 250) return [WORK, CARRY, MOVE];      // 200 e
 
   const unit: BodyPartConstant[] = [WORK, CARRY, CARRY, MOVE]; // 250e
   const uc = unitCost(unit); // = 250

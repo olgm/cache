@@ -119,6 +119,27 @@ function runUpgrader(creep) {
                 return; // idle — let haulers fill the spawn
         }
     }
+    // BOOTSTRAP SPAWN-PROTECTION GUARD: when the room is bootstrapping (no source
+    // containers) and the spawn is critically low AND actively stalled, the
+    // upgrader must idle entirely.  In a bootstrap room the upgrader draws from
+    // spawn/extensions via gatherEnergy step 6 (minSpawnDrain=50) — combined with
+    // the builder's drain this keeps the spawn at 0-50 e and it can never reach
+    // 200 e to spawn a new harvester (W44N38 stall 508).  Idling the upgrader
+    // lets the harvesters' full 10 e/tick accumulate in the spawn until it can
+    // afford a new creep.  Control points are discretionary during a bootstrap
+    // crisis; escaping the deadlock outranks GCL progress.  The builder continues
+    // working from the source directly (its own guard prevents spawn drain), so
+    // source-container construction still progresses.
+    {
+        const bootstrapping = data.sources.every((s) => !s.container);
+        if (bootstrapping) {
+            const totalE = data.spawns.reduce((s, sp) => s + sp.store[RESOURCE_ENERGY], 0) +
+                data.extensions.reduce((s, ext) => s + ext.store[RESOURCE_ENERGY], 0);
+            const stall = creep.room.memory.spawnStall || 0;
+            if (totalE < 200 && stall >= 10)
+                return; // idle — let harvesters fill the spawn
+        }
+    }
     const ctrl = creep.room.controller;
     if (!ctrl || !ctrl.my)
         return;

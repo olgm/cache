@@ -164,6 +164,19 @@ function runBuilder(creep) {
     // to 80 % capacity per trip cuts round-trips by ~16×, raising uptime to
     // ~50 % and letting source containers actually finish before RCL 8.
     const bootstrapping = data.sources.every((s) => !s.container);
+    // BOOTSTRAP SPAWN-PROTECTION GUARD: when the room is bootstrapping and the
+    // spawn has been actively stalled, the builder must not drain spawn/extensions
+    // energy.  The builder's fast-gather path and gatherEnergy step 6 both
+    // withdraw from spawn at ≥50 e, which — combined with the upgrader's drain —
+    // keeps the spawn oscillating at 0-50 e.  The spawn can never reach 200 e
+    // (the minimum harvester body) and the room deadlocks permanently (W44N38
+    // stall 508).  When the guard fires the builder harvests from sources directly
+    // (slower construction but doesn't starve the spawn), and the harvesters'
+    // full 10 e/tick output accumulates in the spawn until it can afford a new
+    // harvester.  Once the spawn is healthy the guard lifts and fast-gather resumes.
+    const bootstrapSpawnProtect = bootstrapping &&
+        (creep.room.memory.spawnStall || 0) >= 10 &&
+        data.energyAvailable < 200;
     // Storage is the single most expensive structure (30 000 energy).  When a
     // builder is targeting it, gather a full load before switching to "working"
     // mode — each trip should deposit as much energy as possible, because the
@@ -199,7 +212,7 @@ function runBuilder(creep) {
         // Both paths require the buffer structure to have ≥ 50 energy to avoid
         // 1e micro-withdrawals that waste ticks.
         const fastGather = (targetingStorage && !data.storage && data.rcl >= 4) ||
-            (bootstrapping && data.rcl >= 3);
+            (bootstrapping && data.rcl >= 3 && !bootstrapSpawnProtect);
         if (fastGather) {
             const buffer = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
                 filter: (s) => (s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION) &&
@@ -221,8 +234,14 @@ function runBuilder(creep) {
         // disables step 6 for post-bootstrap rooms — the builder walks to source
         // containers or harvests directly, which is less efficient but does not
         // sabotage the colony's spawning.  Mirrors the upgrader guard from Cycle 17.
+        //
+        // BOOTSTRAP SPAWN-PROTECTION: when the room is bootstrapping AND the spawn
+        // is critically low and stalled, likewise protect the spawn by passing
+        // minSpawnDrain=200 — the builder walks to the source directly rather than
+        // competing for the spawn's meagre buffer.  See the guard above.
         const hasSourceContainers = data.sources.some((s) => s.container);
-        (0, energy_1.gatherEnergy)(creep, data, hasSourceContainers ? 200 : 50);
+        const minDrain = (hasSourceContainers || bootstrapSpawnProtect) ? 200 : 50;
+        (0, energy_1.gatherEnergy)(creep, data, minDrain);
         return;
     }
     // ---- Spawn-refill emergency ----
