@@ -21,7 +21,17 @@ import { RoomData } from "./utils/roomData";
  * death-spiralled. A cheap miner is one the colony can always replace.
  */
 export declare function minerBody(budget: number): BodyPartConstant[];
-/** Hauler: CARRY/MOVE at a 2:1 ratio (assumes roads; half-speed when loaded off-road). */
+/**
+ * Hauler: CARRY/MOVE at a 2:1 ratio (assumes roads; half-speed when loaded
+ * off-road).  LOW-BUDGET FALLBACK: at budget < 150 (below the [CARRY,CARRY,
+ * MOVE] unit cost), return [CARRY, MOVE] at 100 e — a slow one-trip hauler
+ * that can be spawned in energy-poverty deadlocks where the colony cannot
+ * accumulate the 150 e for a full-hauler body.  A runt hauler that restarts
+ * logistics NOW is the difference between recovery and a permanent stall
+ * (the live W43N38 spawnStall 135).  Unlike harvesterBody and workerBody,
+ * haulerBody had NO escape hatch below its unit cost, so the spawn demanded
+ * a body it could never afford — the exact deadlock this fallback breaks.
+ */
 export declare function haulerBody(budget: number): BodyPartConstant[];
 /** Generalist worker (builder): balanced, budget-filling.
  *
@@ -66,6 +76,14 @@ export declare function harvesterBody(budget: number): BodyPartConstant[];
  * (~50 ticks between refills), which matters more when upgraders occasionally
  * walk to source containers.  Capped at 15 WORK total because a controller
  * accepts at most 15 energy/tick of upgrade at RCL 8.
+ *
+ * LOW-BUDGET FALLBACK: when the workHeavy unit (300 e) is unaffordable, fall
+ * back to the balanced [WORK,CARRY,MOVE] at 200 e, then to [WORK,CARRY] at
+ * 150 e — the same pattern as workerBody and harvesterBody.  Without this a
+ * poverty-trapped room that needs an upgrader (all higher-priority roles met)
+ * demands 300 e it can never accumulate, and the spawn stalls forever (the
+ * live W43N38 spawnStall 135 — the spawn tries upgraderBody(300) with
+ * energyAvailable oscillating at 100–200 e and never succeeds).
  */
 export declare function upgraderBody(budget: number, rcl: number): BodyPartConstant[];
 /** Melee defender: ATTACK with 1:1 MOVE so it stays mobile while fighting. */
