@@ -342,8 +342,18 @@ export function roleTargets(data: RoomData, current: Record<string, number>): Ro
 
   const targets: RoleTargets = {};
 
-  // --- Mining: dedicated miners on container-equipped sources ---
-  targets.miner = withContainer;
+  // --- Mining: dedicated miners on every source (post-bootstrap). ---
+  // Once the room has at least one source container (static mining is active),
+  // every source should have a dedicated miner — even uncovered sources benefit
+  // from drop-mining (a 5-WORK miner produces ~10 e/tick regardless of container
+  // status).  Capping at withContainer left the second source in W43N38 stranded
+  // with only harvesters (~2 e/tick) after its miner died and the spawn target
+  // was satisfied (2 alive, 1 target — no replacement spawned).
+  if (withContainer > 0) {
+    targets.miner = sourceCount;
+  } else {
+    targets.miner = 0;
+  }
 
   // --- Generalist harvesters: cover sources that have no container yet, and
   //     carry the whole economy during the RCL1-2 bootstrap before containers

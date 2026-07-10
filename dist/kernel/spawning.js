@@ -649,22 +649,38 @@ function trySpawnRole(spawn, room, data, role, census, reserved, reservedSources
     // Miner production floor: never lock in a runt miner in a room that can afford
     // a real one (see minerProductionFloor). Producers already alive/reserved keep
     // refilling the spawn while we wait, so the wait cannot deadlock in a HEALTHY
-    // room.  BUT when the spawn has been stalled for SPAWN_STALL_LIMIT+ ticks
-    // (recovering=true), the floor is UNREACHABLE — builders drain the spawn at
-    // minSpawnDrain=200 via gatherEnergy step 6, and the spawn oscillates between
-    // ~0-250 e, never reaching the 450 e floor.  Bypassing the floor when
-    // recovering lets the spawn produce whatever miner it can afford NOW, breaking
-    // the deadlock (live W43N38: spawnStall 138, energy 210/2300, 1 miner for 2
-    // containerized sources → second miner never spawns because 450 e floor
-    // unreachable).  A runt miner is better than NO miner; once income rises the
-    // spawn can replace it with a proper body at end-of-life.
+    // room.  Three bypass paths exist for rooms that CANNOT reach the floor:
+    //
+    // 1. RECOVERING (stall ≥ SPAWN_STALL_LIMIT): the spawn has wanted a creep it
+    //    can't afford for many ticks.  The floor is unreachable — builders drain
+    //    the spawn and energy oscillates below the floor forever.
+    //
+    // 2. WEAK-MINER BYPASS: the room's existing miners have critically few WORK
+    //    parts (averaging < 3 WORK each at RCL 5+, or < 2 WORK below).  These
+    //    weak miners ARE the reason the spawn can't accumulate — they produce
+    //    ~2-4 e/tick instead of the ~10 e/tick a proper miner would.  The floor
+    //    creates a catch-22: the spawn needs 450 e to replace the weak miner,
+    //    but the weak miner can't produce enough to reach 450 e.  Bypassing the
+    //    floor lets the spawn afford a 2-3 WORK miner (200-350 e) that DOUBLES
+    //    that source's output immediately, breaking the poverty trap in one step.
+    //    Each replacement cycle then ratchets upward until the room reaches full
+    //    production — the floor reactivates once miners are no longer weak.
+    //
+    // 3. DEGRADED/CONTAINER-MINER GAP: when source containers exist but miners
+    //    are absent from some sources (withContainer < sourceCount), the room is
+    //    losing potential income.  Bypass the floor so the spawn can field a
+    //    miner for the uncovered source immediately rather than waiting for 450 e.
     const minerFloor = role === "miner"
         ? minerProductionFloor(data.energyCapacity, (0, census_1.roleCount)(census, room.name, "miner") +
             (0, census_1.roleCount)(census, room.name, "harvester") +
             (reserved.miner || 0) +
             (reserved.harvester || 0))
         : 0;
-    if (minerFloor > 0 && !recovering) {
+    const hasWeakMiners = role === "miner" && minerFloor > 0 && roomHasWeakMiners(room.name, data.rcl);
+    const containerGap = role === "miner" &&
+        minerFloor > 0 &&
+        data.sources.filter((s) => s.container).length < data.sources.length;
+    if (minerFloor > 0 && !recovering && !hasWeakMiners && !containerGap) {
         // Size to at least the floor and WAIT for it rather than runt-sizing down.
         body = (0, config_1.bodyForRole)("miner", Math.min(data.energyCapacity, Math.max(budget, minerFloor)), data.rcl);
         if (data.energyAvailable < bodyCost(body))
@@ -723,6 +739,39 @@ function pickFreeContainerSource(data, census, reservedSources) {
         return id;
     }
     return null;
+}
+/**
+ * True when the room's existing miners are critically weak — averaging fewer
+ * WORK parts than the room's RCL can sustain.  At RCL 5+ a proper miner has
+ * 4-5 WORK (8-10 e/tick); miners averaging < 3 WORK can never produce enough
+ * surplus to reach the 450 e minerProductionFloor, creating a self-perpetuating
+ * poverty trap.  Bypassing the floor lets the spawn afford a 2-3 WORK
+ * replacement that doubles the source's output and breaks the trap in one step.
+ *
+ * Only fires when there IS at least one miner (otherwise the room has bigger
+ * problems — the emergency paths handle that) AND the room has the capacity
+ * for a proper miner (energyCapacity ≥ 550).  Returns false at low RCL where
+ * small miners are normal, not a trap.
+ */
+function roomHasWeakMiners(home, rcl) {
+    if (rcl < 4)
+        return false; // small miners are normal at low RCL
+    let totalWork = 0;
+    let count = 0;
+    for (const name in Game.creeps) {
+        const c = Game.creeps[name];
+        if (c.memory.homeRoom !== home || c.memory.role !== "miner")
+            continue;
+        totalWork += c.getActiveBodyparts(WORK);
+        count++;
+    }
+    if (count === 0)
+        return false; // no miners at all — emergency paths handle this
+    const avgWork = totalWork / count;
+    // At RCL 5+ (extensions ≥ 10, capacity ≥ 800), proper miners have 4-5 WORK.
+    // Average < 3 means the room is stuck with runt miners.
+    // At RCL 4 (capacity ~300-550), 2-3 WORK is normal; < 2 is weak.
+    return rcl >= 5 ? avgWork < 3 : avgWork < 2;
 }
 // ---------------------------------------------------------------------------
 // Helpers
